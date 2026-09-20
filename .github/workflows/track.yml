@@ -12,8 +12,8 @@ on:
   workflow_dispatch:
     inputs:
       max_pages:
-        description: Result pages per pass (lower is faster and lighter)
-        default: "20"
+        description: Result pages per pass (raise it for a one-off deep scan)
+        default: "5"
       today:
         description: Expand the schedule as if it were this date (YYYY-MM-DD); blank means today
         default: ""
@@ -56,7 +56,11 @@ jobs:
           FFS_S3_SECRET: ${{ secrets.FFS_S3_SECRET }}
           SHARD: ${{ matrix.shard }}
           SHARD_COUNT: "3"
-          MAX_PAGES: ${{ inputs.max_pages || '20' }}
+          # 5 pages, price-sorted, plus the separate nonstop pass: enough to pin the
+          # cheapest fare and the cheapest nonstop, which is what the history is for.
+          # 20 pages mostly adds reseller duplicates of itineraries already captured,
+          # and at this volume it does not fit in the per-job time budget.
+          MAX_PAGES: ${{ inputs.max_pages || '5' }}
           TODAY: ${{ inputs.today }}
         run: |
           today_flag=""
