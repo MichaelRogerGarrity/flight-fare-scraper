@@ -139,6 +139,42 @@ The only artifact a scheduled run uploads is each shard's counts-only summary.
 `plan` prints counts only unless you pass `--show-routes`, which prints real airport codes
 and is meant for a terminal, not a log.
 
+## Querying the data
+
+A "shard" is a job split, not a data dimension: each scheduled run divides that day's
+search list into three, and each shard writes its own Parquet object. Nothing about a
+shard is meaningful once the rows are loaded -- the objects are just however the day's
+rows happened to be cut up.
+
+Objects are keyed `snapshots/snapshot_date=YYYY-MM-DD/<run-id>-shard<n>.parquet`, so a
+query for one day can name the prefix and skip everything else.
+
+Easiest path is to pull them into a local file and query that:
+
+```bash
+python -m flight_fare_scraper.cli pull --db fares.duckdb
+```
+
+Or read the bucket in place, without downloading anything first:
+
+```sql
+INSTALL httpfs; LOAD httpfs;
+CREATE OR REPLACE SECRET hf (
+    TYPE s3, KEY_ID getenv('FFS_S3_KEY_ID'), SECRET getenv('FFS_S3_SECRET'),
+    ENDPOINT getenv('FFS_S3_ENDPOINT'), URL_STYLE 'path', REGION 'us-east-1');
+
+SELECT snapshot_date, min(price)
+FROM read_parquet('s3://<bucket>/snapshots/**/*.parquet', union_by_name = true)
+GROUP BY 1 ORDER BY 1;
+```
+
+`URL_STYLE 'path'` is required — without it DuckDB tries `<bucket>.s3.hf.co`, which the
+gateway doesn't serve.
+
+[examples/queries.sql](examples/queries.sql) has worked examples: price history for one
+itinerary, cheapest nonstop versus cheapest under 18 hours, all-in cost with bag fees, and
+whether Kayak's own predictions held up.
+
 ## Adding another site
 
 Implement `BaseScraper` in `flight_fare_scraper/scrapers/`, register it, and set `site` on
