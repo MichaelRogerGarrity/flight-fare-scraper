@@ -1,0 +1,73 @@
+# Daily fare tracking. The route list is never in this repo: it arrives as the
+# FFS_ROUTES secret and is expanded into whatever searches are due today.
+#
+# Shards run one at a time (max-parallel: 1). The split exists to stay under the
+# per-job 6-hour limit, not to scrape faster -- two shards hitting the site at once
+# is exactly the concurrency this project avoids.
+name: Track fares
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 03:00 America/New_York in EDT, 02:00 in EST
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: Result pages per pass (lower is faster and lighter)
+        default: "20"
+      today:
+        description: Expand the schedule as if it were this date (YYYY-MM-DD); blank means today
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-fares
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # under the 6h job ceiling, with room to finish the search in flight
+    strategy:
+      fail-fast: false # one shard being blocked shouldn't cost the others their data
+      max-parallel: 1
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape today's searches and publish them
+        env:
+          FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
+          FFS_REDACT_LOGS: "1"
+          FFS_REDACT_SALT: ${{ secrets.FFS_REDACT_SALT }}
+          FFS_S3_ENDPOINT: ${{ secrets.FFS_S3_ENDPOINT }}
+          FFS_S3_BUCKET: ${{ secrets.FFS_S3_BUCKET }}
+          FFS_S3_KEY_ID: ${{ secrets.FFS_S3_KEY_ID }}
+          FFS_S3_SECRET: ${{ secrets.FFS_S3_SECRET }}
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: "3"
+          MAX_PAGES: ${{ inputs.max_pages || '20' }}
+          TODAY: ${{ inputs.today }}
+        run: |
+          today_flag=""
+          if [ -n "$TODAY" ]; then today_flag="--today $TODAY"; fi
+          # --log-file "" keeps the debug log (which carries search URLs) off this runner
+          # entirely; the console stays at INFO, where routes appear only as salted ids.
+          python -m flight_fare_scraper.cli track \
+            --spec-env FFS_ROUTES \
+            --shard "$SHARD/$SHARD_COUNT" \
+            --max-pages "$MAX_PAGES" \
+            $today_flag \
+            --db "run-$SHARD.duckdb" \
+            --push --run-id "${{ github.run_id }}-shard$SHARD" \
+            --log-file ""

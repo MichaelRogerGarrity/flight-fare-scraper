@@ -1,0 +1,5 @@
+# Example batch config. The real route list is NOT in this repo -- it is supplied
+# at run time from the FFS_ROUTES secret (see README). Codes below are placeholders.
+origin,destination,depart,return_date,nonstop,outbound_takeoff,return_takeoff,outbound_landing,return_landing,site
+MIA,TYO,2026-10-02,2026-10-18,false,1600,,,+1@1700,kayak
+MIA,MCO,2026-10-30,2026-11-02,true,,,,,kayak
