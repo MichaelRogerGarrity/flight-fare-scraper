@@ -115,6 +115,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: pip
+
+      # Appending a CSV needs nothing beyond the standard library, but importing the
+      # CLI pulls in duckdb and pandas, so this job needs the same dependencies.
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Collect the shard summaries
         uses: actions/download-artifact@v4
