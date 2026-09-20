@@ -57,6 +57,9 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     source.add_argument("--spec-env", dest="spec_env", help=SPEC_ENV_HELP)
     parser.add_argument("--today", help="Treat this YYYY-MM-DD as today when expanding a route spec")
     parser.add_argument("--shard", help=SHARD_HELP)
+    parser.add_argument("--limit", type=int, default=0,
+                        help="Run at most this many searches (after sharding). For smoke-testing "
+                             "the pipeline end to end without waiting out a full day's schedule.")
 
 
 def parse_shard(text: Optional[str]) -> Optional[Tuple[int, int]]:
@@ -89,6 +92,10 @@ def queries_from(args: argparse.Namespace) -> List[SearchQuery]:
     shard = parse_shard(args.shard)
     if shard:
         queries = schedule.shard(queries, *shard)
+    if args.limit:
+        if args.limit < 0:
+            raise ValueError(f"--limit must not be negative, got {args.limit}")
+        queries = queries[:args.limit]
     return queries
 
 
