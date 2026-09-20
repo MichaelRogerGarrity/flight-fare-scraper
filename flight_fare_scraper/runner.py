@@ -50,12 +50,13 @@ def search_with_retry(
             blocked = isinstance(error, BotBlockedError)
             tag = "BOT_BLOCKED" if blocked else "SEARCH_FAILED"
             if attempt == attempts:
-                logger.error("%s %s: attempt %d/%d failed, giving up: %s", tag, redact.label(query), attempt, attempts, error)
+                logger.error("%s %s: attempt %d/%d failed, giving up: %s",
+                             tag, redact.label(query), attempt, attempts, redact.error(str(error)))
                 raise
             delay = delays[attempt - 1] * (BOT_BLOCK_DELAY_MULTIPLIER if blocked else 1)
             logger.warning(
                 "%s %s: attempt %d/%d failed: %s -- relaunching browser and retrying in %ss",
-                tag, redact.label(query), attempt, attempts, error, delay,
+                tag, redact.label(query), attempt, attempts, redact.error(str(error)), delay,
             )
             sleep(delay)
     raise AssertionError("unreachable")
@@ -126,4 +127,4 @@ def _log_summary(total: int, report: BatchReport) -> None:
         tag, len(report.failures), total, blocked, len(report.results), len(report.succeeded),
     )
     for failure in report.failures:
-        logger.error("  failed: %s -- %s", redact.label(failure.query), failure.error)
+        logger.error("  failed: %s -- %s", redact.label(failure.query), redact.error(failure.error))

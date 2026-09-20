@@ -34,3 +34,15 @@ def route_id(query) -> str:
 def label(query) -> str:
     """The route label to log: opaque when redaction is on, readable otherwise."""
     return route_id(query) if enabled() else query.label
+
+
+def error(text: str) -> str:
+    """Only the exception type when redacting.
+
+    Error messages carry whatever the site handed back -- a bot-block reports the
+    URL it was redirected to, and a timeout names the page it was loading. Those
+    end up on the console, which on a public CI run is world-readable.
+    """
+    if not enabled():
+        return text
+    return text.split(":", 1)[0].strip() or "error"

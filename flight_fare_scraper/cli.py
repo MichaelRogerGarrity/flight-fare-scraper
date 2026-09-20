@@ -1,7 +1,10 @@
 import argparse
+import csv
+import json
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -126,6 +129,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Also publish this snapshot to object storage (see FFS_S3_* in the README)")
     track.add_argument("--run-id", dest="run_id", default="",
                        help="Name for the published object; defaults to the snapshot timestamp")
+    track.add_argument("--summary", default="",
+                       help="Write a counts-only JSON summary of this run here. Safe to publish: "
+                            "it holds no routes, prices or error messages.")
+
+    runlog = sub.add_parser("runlog", help="Append counts-only run summaries to a CSV log")
+    runlog.add_argument("--summaries", required=True, help="Directory of summary JSON files to fold in")
+    runlog.add_argument("--out", default="run-log.csv", help="CSV log to append to (created if absent)")
 
     plan = sub.add_parser("plan", help="Print what a route spec would run today, without scraping")
     add_source_arguments(plan)
@@ -139,9 +149,41 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+RUN_LOG_FIELDS = (
+    "run_date", "run_id", "shard", "searches", "succeeded", "failed",
+    "bot_blocked", "rows", "max_pages", "seconds", "error_types",
+)
+
+
+def summarize(report, queries: List[SearchQuery], args: argparse.Namespace,
+              rows: int, seconds: float, run_date: str) -> dict:
+    """Counts and exception types only.
+
+    Deliberately no route, price or error text: this summary is committed to a
+    public repo, and a failure message can carry the URL the site redirected to.
+    """
+    return {
+        "run_date": run_date,
+        "run_id": args.run_id or "",
+        "shard": args.shard or "1/1",
+        "searches": len(queries),
+        "succeeded": len(report.succeeded),
+        "failed": len(report.failures),
+        "bot_blocked": sum(failure.bot_blocked for failure in report.failures),
+        "rows": rows,
+        "max_pages": args.max_pages if args.max_pages is not None else "",
+        "seconds": round(seconds),
+        "error_types": " ".join(sorted({
+            failure.error.split(":", 1)[0].strip() for failure in report.failures
+        })),
+    }
+
+
 def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
+    started = time.monotonic()
     report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages)
     con = db.connect(args.db)
+    recorded = 0  # bound before the try so the summary still gets written if recording fails
     try:
         moment = db.snapshot_now()
         recorded = db.insert_snapshot(con, report.results, moment)
@@ -155,7 +197,45 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
             )
     finally:
         con.close()
+        if args.summary:
+            summary = summarize(report, queries, args, recorded,
+                                time.monotonic() - started, db.snapshot_now().date().isoformat())
+            Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            logger.info("wrote run summary to %s", args.summary)
     return 1 if report.failures else 0
+
+
+def run_runlog(args: argparse.Namespace) -> int:
+    """Fold each shard's summary into one CSV. Committing it is also what keeps the
+    repository from looking idle, which would have GitHub disable the schedule."""
+    summaries = sorted(Path(args.summaries).glob("**/*.json"))
+    if not summaries:
+        logger.error("no summary files under %s", args.summaries)
+        return 2
+    out = Path(args.out)
+    has_rows = out.exists() and out.stat().st_size > 0
+    # Keyed so re-running the log job doesn't double-enter a run that is already there.
+    seen = set()
+    if has_rows:
+        with out.open(newline="", encoding="utf-8") as handle:
+            seen = {(row["run_date"], row["run_id"], row["shard"]) for row in csv.DictReader(handle)}
+
+    appended = 0
+    with out.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RUN_LOG_FIELDS, extrasaction="ignore")
+        if not has_rows:
+            writer.writeheader()
+        for path in summaries:
+            row = json.loads(path.read_text(encoding="utf-8"))
+            key = (str(row.get("run_date", "")), str(row.get("run_id", "")), str(row.get("shard", "")))
+            if key in seen:
+                continue
+            seen.add(key)
+            writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
+            appended += 1
+    logger.info("appended %d of %d run(s) to %s", appended, len(summaries), out)
+    return 0
 
 
 def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
@@ -194,6 +274,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.mode == "pull":
             return run_pull(args)
+        if args.mode == "runlog":
+            return run_runlog(args)
 
         if args.mode == "search":
             queries = [build_query(

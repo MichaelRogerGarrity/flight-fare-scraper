@@ -74,4 +74,66 @@ jobs:
             $today_flag \
             --db "run-$SHARD.duckdb" \
             --push --run-id "${{ github.run_id }}-shard$SHARD" \
+            --summary "summaries/shard-$SHARD.json" \
             --log-file ""
+
+      # Counts and exception types only -- no routes, prices, URLs or error text.
+      - name: Keep this shard's summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-summary-${{ matrix.shard }}
+          path: summaries/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Appends each shard's counts to run-log.csv and commits it. That commit is also
+  # what stops the repository looking idle: GitHub disables scheduled workflows in a
+  # public repo after 60 days with no repository activity, and workflow runs are not
+  # activity -- only commits are. Without this the tracker goes quiet with no warning.
+  log:
+    needs: track
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A personal access token makes this an ordinary push. GitHub has never
+          # documented whether a GITHUB_TOKEN commit resets the idle timer -- the
+          # bot-commit trick is community lore, not a guarantee -- so set
+          # FFS_KEEPALIVE_TOKEN if you want certainty.
+          token: ${{ secrets.FFS_KEEPALIVE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Collect the shard summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: run-summary-*
+          merge-multiple: true
+          path: summaries
+
+      - name: Append them to the run log
+        run: python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv
+
+      - name: Commit the run log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add run-log.csv
+          if git diff --staged --quiet; then
+            echo "run log unchanged"
+            exit 0
+          fi
+          git commit -m "Log fare tracking run ${{ github.run_id }}"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push rejected, rebasing (attempt $attempt)"
+            git pull --rebase
+          done
+          exit 1

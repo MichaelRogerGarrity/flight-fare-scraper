@@ -79,6 +79,23 @@ jitter for the same reason.
 Each shard writes to a throwaway local DuckDB file and publishes its rows to object
 storage, so no state has to survive the runner.
 
+### The run log, and why it exists
+
+After the shards finish, one more job folds their counts into [`run-log.csv`](run-log.csv)
+and commits it — one row per shard per day, with searches attempted and succeeded, rows
+recorded, bot-blocks, elapsed seconds, and the exception types seen. Counts and type names
+only: no routes, prices, URLs or error text, because a failure message can carry the URL
+the site redirected to.
+
+That commit does double duty. GitHub disables scheduled workflows in a **public** repo
+after 60 days with no repository activity, and workflow runs don't count as activity —
+only commits do. A tracker that writes its data to object storage never touches git, so
+without this it would go quiet around day 60 with no failure and no notification.
+
+GitHub has never documented whether a commit made with `GITHUB_TOKEN` resets that timer;
+the bot-commit approach is community practice, not a guarantee. If you want certainty, add
+a personal access token as `FFS_KEEPALIVE_TOKEN` and the job will push with it instead.
+
 ### Secrets
 
 | Secret | What it is |
@@ -89,6 +106,7 @@ storage, so no state has to survive the runner.
 | `FFS_S3_BUCKET` | The bucket name alone, without the namespace |
 | `FFS_S3_KEY_ID` | S3 access key id, starts with `HFAK` |
 | `FFS_S3_SECRET` | S3 secret access key |
+| `FFS_KEEPALIVE_TOKEN` | Optional PAT for the run-log commit (see above) |
 
 The same four `FFS_S3_*` values work as local environment variables for `pull`.
 
