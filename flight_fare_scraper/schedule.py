@@ -142,13 +142,29 @@ def tier_for(spec: Spec, days_out: int) -> Optional[Tier]:
     return None
 
 
+def _is_due(weekend: date, days_out: int, tier: Tier) -> bool:
+    """Whether this weekend's turn comes up today, spread across the interval.
+
+    `days_out % every_days` alone looks right and is badly wrong: base weekends are
+    a whole number of weeks apart, so every weekend in a tier shares one phase and
+    they all come due on the same weekday. With a weekly tier that meant the entire
+    far half of the horizon landed on Fridays and nothing the other six days.
+
+    Adding the weekend's week number shifts consecutive weekends into consecutive
+    phases, so a tier's weekends spread evenly across its interval. Each weekend
+    still comes up exactly every `every_days` days: as today advances, days_out
+    falls by one and the whole expression moves with it.
+    """
+    return (days_out + weekend.toordinal() // 7) % tier.every_days == 0
+
+
 def due_today(spec: Spec, today: date) -> List[SearchQuery]:
     """The searches to run today. A weekend's turn comes up every tier.every_days."""
     queries = []
     for weekend in base_weekends(spec, today):
         days_out = (weekend - today).days
         tier = tier_for(spec, days_out)
-        if tier is None or days_out % tier.every_days != 0:
+        if tier is None or not _is_due(weekend, days_out, tier):
             continue
         for route in spec.routes:
             for depart_offset in tier.day_offsets:
