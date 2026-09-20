@@ -17,6 +17,9 @@ on:
       today:
         description: Expand the schedule as if it were this date (YYYY-MM-DD); blank means today
         default: ""
+      limit:
+        description: Cap each shard at this many searches (0 = no cap). Use a small number to smoke-test.
+        default: "0"
 
 permissions:
   contents: read
@@ -62,6 +65,7 @@ jobs:
           # and at this volume it does not fit in the per-job time budget.
           MAX_PAGES: ${{ inputs.max_pages || '5' }}
           TODAY: ${{ inputs.today }}
+          LIMIT: ${{ inputs.limit || '0' }}
         run: |
           today_flag=""
           if [ -n "$TODAY" ]; then today_flag="--today $TODAY"; fi
@@ -70,6 +74,7 @@ jobs:
           python -m flight_fare_scraper.cli track \
             --spec-env FFS_ROUTES \
             --shard "$SHARD/$SHARD_COUNT" \
+            --limit "$LIMIT" \
             --max-pages "$MAX_PAGES" \
             $today_flag \
             --db "run-$SHARD.duckdb" \
