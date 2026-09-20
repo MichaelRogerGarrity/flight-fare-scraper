@@ -68,7 +68,7 @@ SELECT snapshot_date,
 FROM (
     SELECT snapshot_date, min(price) AS cheapest
     FROM fares
-    WHERE origin = 'DCA' AND destination = 'MDW'
+    WHERE origin = 'MIA' AND destination = 'MCO'   -- placeholder codes, use your own
       AND depart_date = DATE '2026-10-30' AND return_date = DATE '2026-11-02'
     GROUP BY 1
 )
@@ -91,12 +91,12 @@ ORDER BY depart_date;
 
 
 ---------------------------------------------------------------------------
--- Which weekend is cheapest, across the whole rolling window
+-- Which weekend is cheapest, across the whole rolling window (long-haul route)
 ---------------------------------------------------------------------------
 
 SELECT depart_date, return_date, min(price) AS cheapest
 FROM fares
-WHERE origin = 'WAS' AND destination = 'TYO'
+WHERE origin = 'MIA' AND destination = 'SIN'   -- placeholder codes, use your own
   AND snapshot_date = (SELECT max(snapshot_date) FROM fares)
 GROUP BY ALL
 ORDER BY cheapest
