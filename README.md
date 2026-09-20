@@ -130,8 +130,11 @@ This repo is public; its Actions logs are too. Two things keep routes out of the
   Without a salt the digest is brute-forceable, since airport pairs and dates are a small
   space — so set `FFS_REDACT_SALT` as well.
 - `--log-file ""` disables the debug log entirely on CI runners. Debug lines carry the
-  full search URL, airport codes and all, and nothing uploads artifacts from a scheduled
-  run.
+  full search URL, airport codes and all, so on CI that file is never written at all.
+- Error messages are reduced to their exception type when redaction is on, since a
+  bot-block reports the URL it was redirected to.
+
+The only artifact a scheduled run uploads is each shard's counts-only summary.
 
 `plan` prints counts only unless you pass `--show-routes`, which prints real airport codes
 and is meant for a terminal, not a log.
