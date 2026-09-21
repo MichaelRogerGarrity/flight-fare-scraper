@@ -33,6 +33,16 @@ class BatchReport:
     failures: List[SearchFailure] = field(default_factory=list)
 
 
+def _described(error: BaseException) -> str:
+    """Name the exception type first.
+
+    Scraper messages start with the route label, so redaction -- which keeps only
+    the text before the first colon -- would otherwise report the label again and
+    say nothing about what went wrong.
+    """
+    return f"{type(error).__name__}: {error}"
+
+
 def search_with_retry(
     scraper: BaseScraper,
     query: SearchQuery,
@@ -51,12 +61,12 @@ def search_with_retry(
             tag = "BOT_BLOCKED" if blocked else "SEARCH_FAILED"
             if attempt == attempts:
                 logger.error("%s %s: attempt %d/%d failed, giving up: %s",
-                             tag, redact.label(query), attempt, attempts, redact.error(str(error)))
+                             tag, redact.label(query), attempt, attempts, redact.error(_described(error)))
                 raise
             delay = delays[attempt - 1] * (BOT_BLOCK_DELAY_MULTIPLIER if blocked else 1)
             logger.warning(
                 "%s %s: attempt %d/%d failed: %s -- relaunching browser and retrying in %ss",
-                tag, redact.label(query), attempt, attempts, redact.error(str(error)), delay,
+                tag, redact.label(query), attempt, attempts, redact.error(_described(error)), delay,
             )
             sleep(delay)
     raise AssertionError("unreachable")

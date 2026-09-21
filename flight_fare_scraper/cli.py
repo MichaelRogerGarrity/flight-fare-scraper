@@ -136,6 +136,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Also publish this snapshot to object storage (see FFS_S3_* in the README)")
     track.add_argument("--run-id", dest="run_id", default="",
                        help="Name for the published object; defaults to the snapshot timestamp")
+    track.add_argument("--tolerate-failures", dest="tolerate_failures", type=int, default=0,
+                       help="Still exit 0 if at most this many searches failed. A daily unattended "
+                            "run shouldn't go red over one transient timeout. Any bot-block fails "
+                            "regardless, since that is the signal worth reacting to.")
     track.add_argument("--summary", default="",
                        help="Write a counts-only JSON summary of this run here. Safe to publish: "
                             "it holds no routes, prices or error messages.")
@@ -210,7 +214,21 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
             Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
             Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
             logger.info("wrote run summary to %s", args.summary)
-    return 1 if report.failures else 0
+    return _track_exit_code(report, args.tolerate_failures)
+
+
+def _track_exit_code(report, tolerated: int) -> int:
+    """Nonzero on any bot-block, or on more failures than the run is willing to absorb."""
+    blocked = sum(failure.bot_blocked for failure in report.failures)
+    if blocked:
+        logger.error("BOT_BLOCKED_RUN: %d search(es) were blocked", blocked)
+        return 1
+    if len(report.failures) > tolerated:
+        return 1
+    if report.failures:
+        logger.warning("tolerating %d failed search(es) (limit %d); no searches were blocked",
+                       len(report.failures), tolerated)
+    return 0
 
 
 def run_runlog(args: argparse.Namespace) -> int:

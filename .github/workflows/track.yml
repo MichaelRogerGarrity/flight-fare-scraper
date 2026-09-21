@@ -76,6 +76,7 @@ jobs:
             --shard "$SHARD/$SHARD_COUNT" \
             --limit "$LIMIT" \
             --max-pages "$MAX_PAGES" \
+            --tolerate-failures 3 \
             $today_flag \
             --db "run-$SHARD.duckdb" \
             --push --run-id "${{ github.run_id }}-shard$SHARD" \

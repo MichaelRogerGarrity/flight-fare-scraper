@@ -79,6 +79,11 @@ jitter for the same reason.
 Each shard writes to a throwaway local DuckDB file and publishes its rows to object
 storage, so no state has to survive the runner.
 
+A shard tolerates up to three failed searches before it goes red: at ~92 searches a
+shard, one transient timeout is noise, and a daily unattended job that cries wolf gets
+ignored. Any bot-block fails the run regardless of the tolerance, since that is the
+signal worth reacting to. Every failure is recorded in the run log either way.
+
 ### The run log, and why it exists
 
 After the shards finish, one more job folds their counts into [`run-log.csv`](run-log.csv)
