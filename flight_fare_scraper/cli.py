@@ -10,7 +10,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from . import db, schedule, storage
+import duckdb
+
+from . import audit, db, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
@@ -153,6 +155,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     plan.add_argument("--show-routes", action="store_true",
                       help="List each search. Prints real airport codes, so not for a public log.")
 
+    audit_parser = sub.add_parser("audit", help="Report on the quality of collected snapshots")
+    audit_source = audit_parser.add_mutually_exclusive_group(required=True)
+    audit_source.add_argument("--db", help="Audit a local DuckDB file")
+    audit_source.add_argument("--from-bucket", dest="from_bucket", action="store_true",
+                              help="Audit the published objects in place, without downloading them")
+    audit_parser.add_argument("--spec", help="Also check each snapshot against what this spec expected")
+    audit_parser.add_argument("--spec-env", dest="spec_env", help=SPEC_ENV_HELP)
+    audit_parser.add_argument("--log-file", default="", help=LOG_FILE_HELP)
+    audit_parser.add_argument("--verbose", action="store_true", help="Show debug-level logs")
+
     pull = sub.add_parser("pull", parents=[common],
                           help="Merge published snapshots from object storage into a local DuckDB file")
     pull.add_argument("--db", default="fares.duckdb", help="DuckDB database file to merge into")
@@ -280,6 +292,33 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     return 0
 
 
+def run_audit(args: argparse.Namespace) -> int:
+    """Exit 1 when the report found something wrong, so CI can gate on it."""
+    spec = None
+    if args.spec or args.spec_env:
+        text = (Path(args.spec).read_text(encoding="utf-8") if args.spec
+                else os.environ.get(args.spec_env, ""))
+        if not text.strip():
+            raise ValueError(f"environment variable {args.spec_env} is empty or unset")
+        spec = schedule.parse_spec(text)
+
+    con = db.connect(args.db) if args.db else duckdb.connect()
+    try:
+        if args.from_bucket:
+            storage.configure(con)
+            pattern = storage.uri(storage.require_env(storage.BUCKET_ENV),
+                                  f"{storage.SNAPSHOT_PREFIX}/**/*.parquet")
+            con.execute(
+                f"CREATE OR REPLACE VIEW audited AS "
+                f"SELECT * FROM read_parquet({storage._sql_literal(pattern)}, union_by_name = true)")
+            table = "audited"
+        else:
+            table = "fares"
+        return 0 if audit.report(con, table, spec) else 1
+    finally:
+        con.close()
+
+
 def run_pull(args: argparse.Namespace) -> int:
     con = db.connect(args.db)
     try:
@@ -301,6 +340,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_pull(args)
         if args.mode == "runlog":
             return run_runlog(args)
+        if args.mode == "audit":
+            return run_audit(args)
 
         if args.mode == "search":
             queries = [build_query(

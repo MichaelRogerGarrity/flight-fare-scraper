@@ -1,0 +1,41 @@
+# Data-quality report over everything published so far. Read-only: it opens the
+# Parquet objects in place and writes nothing.
+#
+# Safe for a public log by construction -- the report emits counts, rates and
+# salted route ids, never airport codes.
+name: Audit collected data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 20 * * 1" # Mondays, well clear of the daily tracking run
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Report on the published snapshots
+        env:
+          FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
+          FFS_REDACT_LOGS: "1"
+          FFS_REDACT_SALT: ${{ secrets.FFS_REDACT_SALT }}
+          FFS_S3_ENDPOINT: ${{ secrets.FFS_S3_ENDPOINT }}
+          FFS_S3_BUCKET: ${{ secrets.FFS_S3_BUCKET }}
+          FFS_S3_KEY_ID: ${{ secrets.FFS_S3_KEY_ID }}
+          FFS_S3_SECRET: ${{ secrets.FFS_S3_SECRET }}
+        run: |
+          python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES
