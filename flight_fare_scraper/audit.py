@@ -34,6 +34,10 @@ EXPECTED_POPULATED: Dict[str, float] = {
     "outbound_stops": 0.0,
     "return_stops": 0.0,
     "cabin_class": 0.05,
+    "outbound_from": 0.01,
+    "outbound_to": 0.01,
+    "return_from": 0.01,
+    "return_to": 0.01,
 }
 # Populated only when the itinerary has a connection, or when the site chose to say.
 CONDITIONAL_COLUMNS = (
@@ -82,13 +86,26 @@ def coverage(con: duckdb.DuckDBPyConnection, table: str, spec: schedule.Spec,
     return len(expected), len(found), missing
 
 
+def present_columns(con: duckdb.DuckDBPyConnection, table: str) -> List[str]:
+    return [row[0] for row in con.execute(f"DESCRIBE {table}").fetchall()]
+
+
 def null_rates(con: duckdb.DuckDBPyConnection, table: str) -> List[Tuple[str, float]]:
-    total = _scalar(con, f"SELECT count(*) FROM {table}") or 0
+    """Null rate per column over the latest snapshot only.
+
+    Measured across all history, a column added later is dragged toward 100% null
+    by every snapshot taken before it existed -- which says nothing about whether
+    the parser works today, the only question this check exists to answer.
+    Columns no published object has yet are skipped rather than failing the query.
+    """
+    latest = f"WHERE snapshot_date = (SELECT max(snapshot_date) FROM {table})"
+    total = _scalar(con, f"SELECT count(*) FROM {table} {latest}") or 0
     if not total:
         return []
-    selects = ", ".join(f'count(*) FILTER (WHERE "{name}" IS NULL)' for name in COLUMNS)
-    counts = con.execute(f"SELECT {selects} FROM {table}").fetchone()
-    return [(name, nulls / total) for name, nulls in zip(COLUMNS, counts)]
+    columns = [name for name in COLUMNS if name in set(present_columns(con, table))]
+    selects = ", ".join(f'count(*) FILTER (WHERE "{name}" IS NULL)' for name in columns)
+    counts = con.execute(f"SELECT {selects} FROM {table} {latest}").fetchone()
+    return [(name, nulls / total) for name, nulls in zip(columns, counts)]
 
 
 def shape(con: duckdb.DuckDBPyConnection, table: str) -> Dict[str, object]:
@@ -186,7 +203,9 @@ def report(con: duckdb.DuckDBPyConnection, table: str,
                 logger.info("  %s  expected %d, found %d%s", snapshot_date, expected, found,
                             f" (+{extra} carried from an earlier spec)" if extra > 0 else "")
 
-    logger.info("== column completeness ==")
+    logger.info("== column completeness (latest snapshot) ==")
+    for name in sorted(set(COLUMNS) - set(present_columns(con, table))):
+        logger.info("  %-28s not in the data yet (added after these snapshots)", name)
     for name, rate in null_rates(con, table):
         threshold = EXPECTED_POPULATED.get(name)
         if threshold is not None and rate > threshold:

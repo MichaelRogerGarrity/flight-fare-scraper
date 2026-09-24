@@ -38,6 +38,8 @@ class FlightResult:
     outbound_operated_by: Optional[str] = None  # set only if a codeshare operates that first segment
     outbound_depart: Optional[str] = None
     outbound_arrive: Optional[str] = None
+    outbound_from: Optional[str] = None  # airport actually departed; origin may be a metro code
+    outbound_to: Optional[str] = None
     outbound_stops: Optional[int] = None
     outbound_duration_min: Optional[int] = None
     outbound_layover_airports: Optional[str] = None  # comma-joined connecting airport(s), if any
@@ -48,6 +50,8 @@ class FlightResult:
     return_operated_by: Optional[str] = None
     return_depart: Optional[str] = None
     return_arrive: Optional[str] = None
+    return_from: Optional[str] = None
+    return_to: Optional[str] = None  # airport actually landed at on the way home
     return_stops: Optional[int] = None
     return_duration_min: Optional[int] = None
     return_layover_airports: Optional[str] = None

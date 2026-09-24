@@ -236,3 +236,27 @@ def test_the_nonstop_pass_starts_after_a_random_pause(monkeypatch):
 
     assert calls == [False, True]
     assert len(pauses) == 1 and 5.0 <= pauses[0] <= 15.0
+
+
+def test_legs_record_the_airports_actually_flown(payload):
+    """The query's origin is whatever was searched, often a metro code. The endpoints
+    must come from the segments, or airports within a metro are indistinguishable."""
+    rows = results(payload)
+    assert rows
+    for row in rows:
+        assert row.outbound_from in {"MIA", "FLL"}
+        assert row.outbound_to in {"NRT", "HND"}
+        assert row.return_from in {"NRT", "HND"}
+        assert row.return_to in {"MIA", "FLL"}
+
+
+def test_endpoints_can_differ_from_the_searched_code(payload):
+    # Searched as MIA, but at least one itinerary in the real response leaves from FLL.
+    assert {row.outbound_from for row in results(payload)} - {QUERY.origin}
+
+
+def test_endpoints_ignore_connection_airports(payload):
+    for row in results(payload):
+        layovers = set((row.outbound_layover_airports or "").split(",")) - {""}
+        assert row.outbound_from not in layovers
+        assert row.outbound_to not in layovers

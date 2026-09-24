@@ -19,6 +19,17 @@ layover airports and minutes, airport change, equipment), the cabin, bag fees as
 fields from the fare, cancellation and virtual-interline flags, and Kayak's own price
 prediction. `snapshot_date` is stamped in US Eastern wall-clock time.
 
+`origin` and `destination` are what was *searched*, often a metro code (`NYC` covers
+JFK, LGA and EWR). The airports actually flown are in `outbound_from`, `outbound_to`,
+`return_from` and `return_to`, recorded from 2026-09-25 on. Note that a metro search
+only shows an airport if its fares rank: with results price-sorted and five pages
+fetched, an airport with few and expensive options can be included in the search yet
+never appear. Search that airport as its own route to guarantee it is tracked.
+
+Departure and arrival timestamps are local wall-clock at each airport, so an eastbound
+transpacific leg can land "before" it took off. Use `*_duration_min` for trip length,
+never arrival minus departure.
+
 ## Running it locally
 
 ```bash

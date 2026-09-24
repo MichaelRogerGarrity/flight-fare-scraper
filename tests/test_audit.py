@@ -38,7 +38,7 @@ def counts(con):
 
 
 def test_a_dateline_crossing_is_not_an_anomaly(con):
-    """ANA leaves Tokyo 16:50 and lands in DC 15:40 the same local day. Timestamps are
+    """An eastbound transpacific leg can leave at 16:50 and land at 15:40 the same local day. Timestamps are
     local wall-clock, so arrive < depart is correct here, not corrupt."""
     insert(con)
     assert counts(con)["timestamps disagree with duration"] == 0

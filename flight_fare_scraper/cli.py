@@ -305,7 +305,9 @@ def run_audit(args: argparse.Namespace) -> int:
             raise ValueError(f"environment variable {args.spec_env} is empty or unset")
         spec = schedule.parse_spec(text)
 
-    con = db.connect(args.db) if args.db else duckdb.connect()
+    # Read-only: db.connect would migrate the schema, and an audit must not modify
+    # the file it is reporting on.
+    con = duckdb.connect(args.db, read_only=True) if args.db else duckdb.connect()
     try:
         if args.from_bucket:
             storage.configure(con)

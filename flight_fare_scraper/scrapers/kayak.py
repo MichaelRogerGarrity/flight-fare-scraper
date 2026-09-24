@@ -319,15 +319,19 @@ class KayakScraper(BaseScraper):
             raise PaginationError(f"{label}: couldn't click '{SHOW_MORE_TEXT}' to load page {number}") from error
 
     def _leg_detail(self, leg: dict, segments_lookup: dict, airlines_lookup: dict):
-        """Airline, codeshare operator, equipment, layover, and airport-change detail for one leg.
+        """Airline, codeshare operator, equipment, layover, airport-change and endpoint detail for one leg.
 
         `booking.providerCode` is who you'd book through, not the airline; the airline
         lives on each segment in the top-level `segments` lookup. `layover` sits on the
         leg's own segment references, not on those resolved segment records.
+
+        The endpoints are the airports actually flown from and to. The query's origin
+        is whatever was searched -- often a metro code like NYC or LON -- so without
+        these there is no telling JFK from EWR, or LHR from LGW.
         """
         segment_refs = leg.get("segments") or []
         if not segment_refs:
-            return None, None, None, None, None, None
+            return None, None, None, None, None, None, None, None
 
         segments = [segments_lookup.get(ref.get("id")) or {} for ref in segment_refs]
         first = segments[0]
@@ -346,7 +350,8 @@ class KayakScraper(BaseScraper):
             and arriving["destination"] != departing["origin"]
             for arriving, departing in zip(segments, segments[1:])
         )
-        return airline, operated_by, first.get("equipmentTypeName"), layover_airports, layover_min, airport_change
+        return (airline, operated_by, first.get("equipmentTypeName"), layover_airports, layover_min,
+                airport_change, first.get("origin"), segments[-1].get("destination"))
 
     @staticmethod
     def _price_prediction(data: dict) -> Tuple[Optional[str], Optional[float], Optional[int]]:
@@ -379,10 +384,10 @@ class KayakScraper(BaseScraper):
                 return_leg = legs_lookup.get(return_ref.get("legId")) or {}
 
                 (outbound_airline, outbound_operated_by, outbound_equipment, outbound_layover_airports,
-                 outbound_layover_min, outbound_airport_change) = self._leg_detail(
+                 outbound_layover_min, outbound_airport_change, outbound_from, outbound_to) = self._leg_detail(
                     outbound_leg, segments_lookup, airlines_lookup)
                 (return_airline, return_operated_by, return_equipment, return_layover_airports,
-                 return_layover_min, return_airport_change) = self._leg_detail(
+                 return_layover_min, return_airport_change, return_from, return_to) = self._leg_detail(
                     return_leg, segments_lookup, airlines_lookup)
 
                 price_info = booking.get("displayPrice") or {}
@@ -406,6 +411,8 @@ class KayakScraper(BaseScraper):
                     outbound_operated_by=outbound_operated_by,
                     outbound_depart=outbound_leg.get("departure"),
                     outbound_arrive=outbound_leg.get("arrival"),
+                    outbound_from=outbound_from,
+                    outbound_to=outbound_to,
                     outbound_stops=max(len(outbound_leg.get("segments") or []) - 1, 0) if outbound_leg else None,
                     outbound_duration_min=outbound_leg.get("duration"),
                     outbound_layover_airports=outbound_layover_airports,
@@ -416,6 +423,8 @@ class KayakScraper(BaseScraper):
                     return_operated_by=return_operated_by,
                     return_depart=return_leg.get("departure"),
                     return_arrive=return_leg.get("arrival"),
+                    return_from=return_from,
+                    return_to=return_to,
                     return_stops=max(len(return_leg.get("segments") or []) - 1, 0) if return_leg else None,
                     return_duration_min=return_leg.get("duration"),
                     return_layover_airports=return_layover_airports,
