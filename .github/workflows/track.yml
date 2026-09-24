@@ -8,7 +8,12 @@ name: Track fares
 
 on:
   schedule:
-    - cron: "0 7 * * *" # 03:00 America/New_York in EDT, 02:00 in EST
+    # 01:37 America/New_York in EDT, 00:37 in EST. The odd minute is deliberate:
+    # GitHub deprioritizes scheduled runs at busy times and the top of the hour is
+    # the busiest slot, which cost the previous "0 7" setting 5-7 hours of queueing
+    # every day. Do not move this earlier -- at 03:37 UTC a winter run would stamp
+    # its snapshot with the previous Eastern date.
+    - cron: "37 5 * * *"
   workflow_dispatch:
     inputs:
       max_pages:
