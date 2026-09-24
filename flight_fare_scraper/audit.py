@@ -141,7 +141,8 @@ def anomalies(con: duckdb.DuckDBPyConnection, table: str) -> List[Tuple[str, int
 
 
 def report(con: duckdb.DuckDBPyConnection, table: str,
-           spec: Optional[schedule.Spec] = None) -> bool:
+           spec: Optional[schedule.Spec] = None,
+           coverage_since: Optional[date] = None) -> bool:
     """Print the report. Returns True if nothing looked wrong."""
     clean = True
     rows = snapshots(con, table)
@@ -158,6 +159,13 @@ def report(con: duckdb.DuckDBPyConnection, table: str,
     if spec is not None:
         logger.info("== coverage against the schedule ==")
         for snapshot_date, *_ in rows:
+            # Coverage compares a past snapshot against today's schedule, so a snapshot
+            # taken under an earlier spec or an earlier version of the scheduler will
+            # look short through no fault of the run. coverage_since marks when the
+            # current schedule took effect.
+            if coverage_since and snapshot_date < coverage_since:
+                logger.info("  %s  skipped (predates the current schedule)", snapshot_date)
+                continue
             expected, found, missing = coverage(con, table, spec, snapshot_date)
             if missing:
                 # A search that ran fine can still yield nothing: airlines publish

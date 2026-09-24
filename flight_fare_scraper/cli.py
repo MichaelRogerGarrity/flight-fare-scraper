@@ -162,6 +162,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                               help="Audit the published objects in place, without downloading them")
     audit_parser.add_argument("--spec", help="Also check each snapshot against what this spec expected")
     audit_parser.add_argument("--spec-env", dest="spec_env", help=SPEC_ENV_HELP)
+    audit_parser.add_argument("--coverage-since", dest="coverage_since",
+                              help="Only check coverage for snapshots on or after this YYYY-MM-DD. "
+                                   "Earlier ones ran under a different schedule and would look short.")
     audit_parser.add_argument("--log-file", default="", help=LOG_FILE_HELP)
     audit_parser.add_argument("--verbose", action="store_true", help="Show debug-level logs")
 
@@ -314,7 +317,9 @@ def run_audit(args: argparse.Namespace) -> int:
             table = "audited"
         else:
             table = "fares"
-        return 0 if audit.report(con, table, spec) else 1
+        since = (datetime.strptime(args.coverage_since, "%Y-%m-%d").date()
+                 if args.coverage_since else None)
+        return 0 if audit.report(con, table, spec, since) else 1
     finally:
         con.close()
 
