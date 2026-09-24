@@ -42,7 +42,13 @@ CONDITIONAL_COLUMNS = (
     "second_checked_bag_fee", "outbound_operated_by", "return_operated_by",
 )
 PLAUSIBLE_PRICE = (20.0, 20000.0)
+_OFFSET_CHECK = " OR ".join(
+    f"(({leg}_duration_min - date_diff('minute', {leg}_depart, {leg}_arrive)) % 15 <> 0"
+    f" OR abs({leg}_duration_min - date_diff('minute', {leg}_depart, {leg}_arrive)) > 14 * 60)"
+    for leg in ("outbound", "return")
+)
 PLAUSIBLE_DURATION_MIN = (30, 3000)  # half an hour to just over two days
+MISSING_TOLERANCE = 0.05  # share of a day's searches that may legitimately return nothing
 
 
 def _scalar(con: duckdb.DuckDBPyConnection, sql: str, params=None):
@@ -116,7 +122,11 @@ def anomalies(con: duckdb.DuckDBPyConnection, table: str) -> List[Tuple[str, int
         "price null or non-positive": "price IS NULL OR price <= 0",
         f"leg under {short} min": f"outbound_duration_min < {short} OR return_duration_min < {short}",
         f"leg over {long} min": f"outbound_duration_min > {long} OR return_duration_min > {long}",
-        "arrival before departure": "outbound_arrive < outbound_depart OR return_arrive < return_depart",
+        # Not "arrive < depart": timestamps are local wall-clock, so an eastbound
+        # transpacific leg legitimately lands earlier in the day than it took off.
+        # What must hold is that duration minus the wall-clock gap is a real UTC
+        # offset difference -- a multiple of 15 minutes, within 14 hours.
+        "timestamps disagree with duration": _OFFSET_CHECK,
         "return departs before outbound arrives": "return_depart < outbound_arrive",
         "negative stops": "outbound_stops < 0 OR return_stops < 0",
         "nonstop with a layover": "(outbound_stops = 0 AND outbound_layover_min > 0)"
@@ -150,13 +160,19 @@ def report(con: duckdb.DuckDBPyConnection, table: str,
         for snapshot_date, *_ in rows:
             expected, found, missing = coverage(con, table, spec, snapshot_date)
             if missing:
-                clean = False
-                logger.error("  %s  expected %d, found %d, MISSING %d",
-                             snapshot_date, expected, found, len(missing))
+                # A search that ran fine can still yield nothing: airlines publish
+                # schedules roughly 330 days out, and a nonstop-only search on a date
+                # with no nonstop returns an empty result set. Only a large shortfall
+                # means something actually broke.
+                serious = len(missing) > max(2, round(expected * MISSING_TOLERANCE))
+                log = logger.error if serious else logger.warning
+                clean = clean and not serious
+                log("  %s  expected %d, found %d, %d absent%s", snapshot_date, expected, found,
+                    len(missing), " -- ABOVE TOLERANCE" if serious else " (may be genuinely empty)")
                 for site, origin, destination, depart, returns in missing[:5]:
-                    logger.error("    missing: %s depart %s return %s",
-                                 redact.route_id(_Stub(site, origin, destination, depart, returns)),
-                                 depart, returns)
+                    log("    absent: %s depart %s (%dd out) return %s",
+                        redact.route_id(_Stub(site, origin, destination, depart, returns)),
+                        depart, (depart - snapshot_date).days, returns)
             else:
                 extra = found - expected
                 logger.info("  %s  expected %d, found %d%s", snapshot_date, expected, found,
