@@ -40,4 +40,4 @@ jobs:
         run: |
           # 2026-09-21 is the first snapshot taken under the current scheduler; earlier
           # ones would be judged against a schedule that did not exist yet.
-          python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES \n            --coverage-since 2026-09-21
+          python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES --coverage-since 2026-09-21
