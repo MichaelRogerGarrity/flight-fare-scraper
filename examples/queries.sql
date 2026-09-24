@@ -79,9 +79,15 @@ ORDER BY snapshot_date;
 -- Cheapest nonstop, and cheapest under 18 hours of total travel
 ---------------------------------------------------------------------------
 
+-- "Under 18 hours" means per leg, not both legs added together. The fastest single
+-- leg to Tokyo is 14.1h, so a round trip is 26.6h at best -- a summed threshold of
+-- 18h can never match, and quietly returns NULL instead of telling you so.
+-- Note this threshold is unreachable for some routes whatever you do: the fastest
+-- leg to Bangkok is 20h.
 SELECT depart_date, return_date,
        min(price) FILTER (WHERE outbound_stops = 0 AND return_stops = 0) AS cheapest_nonstop,
-       min(price) FILTER (WHERE outbound_duration_min + return_duration_min <= 18 * 60) AS cheapest_under_18h,
+       min(price) FILTER (WHERE outbound_duration_min <= 18 * 60
+                            AND return_duration_min <= 18 * 60)          AS cheapest_under_18h_per_leg,
        min(price)                                                        AS cheapest_any
 FROM fares
 WHERE snapshot_date = (SELECT max(snapshot_date) FROM fares)
