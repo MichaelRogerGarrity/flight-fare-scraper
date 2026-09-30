@@ -1,0 +1,16 @@
+# Local price-history databases and run output
+*.duckdb
+*.duckdb.wal
+logs/
+results.csv
+results.json
+*.xlsx
+
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+
+# Route spec and published-snapshot working files (never commit a filled-in spec)
+routes.spec.json
+run-*.duckdb

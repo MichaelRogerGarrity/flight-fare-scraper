@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "Placeholder route spec. The real one names real airports and lives only in",
+    "the FFS_ROUTES GitHub Actions secret -- never commit a filled-in copy.",
+    "nights = days from departure to return. day_offsets are applied to both ends,",
+    "so [-1, 0, 1] expands each base weekend into 9 date combinations."
+  ],
+  "base_weekday": 4,
+  "horizon_days": 365,
+  "min_days_out": 1,
+  "tiers": [
+    { "max_days_out": 30,  "every_days": 1, "day_offsets": [-1, 0, 1] },
+    { "max_days_out": 90,  "every_days": 3, "day_offsets": [-1, 0, 1] },
+    { "max_days_out": 365, "every_days": 7, "day_offsets": [0] }
+  ],
+  "routes": [
+    { "origin": "MIA", "destination": "MCO", "nights": 2,  "nonstop": true },
+    { "origin": "MIA", "destination": "TPA", "nights": 2,  "nonstop": true },
+    { "origin": "MIA", "destination": "SIN", "nights": 9,  "nonstop": false, "return_landing": "+1@0000,+1@2359" },
+    { "origin": "MIA", "destination": "TYO", "nights": 16, "nonstop": false, "return_landing": "+1@0000,+1@2359" }
+  ]
+}

@@ -1,0 +1,195 @@
+# Daily fare tracking. The route list is never in this repo: it arrives as the
+# FFS_ROUTES secret and is expanded into whatever searches are due today.
+#
+# Shards run one at a time (max-parallel: 1). The split is not for speed -- two
+# shards hitting the site at once is exactly the concurrency this project avoids.
+# It exists because the site stops answering a runner after roughly 110-125
+# searches' worth of requests: every attempt after that point times out on page 1,
+# and a relaunched browser doesn't help because the runner's address hasn't
+# changed. Each shard gets a fresh runner, so the plan job sizes the run to keep
+# every shard well under that wall, however many routes the spec grows to.
+name: Track fares
+
+on:
+  schedule:
+    # 01:37 America/New_York in EDT, 00:37 in EST. The odd minute is deliberate:
+    # GitHub deprioritizes scheduled runs at busy times and the top of the hour is
+    # the busiest slot, which cost the previous "0 7" setting 5-7 hours of queueing
+    # every day. Do not move this earlier -- at 03:37 UTC a winter run would stamp
+    # its snapshot with the previous Eastern date.
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: Result pages per pass (raise it for a one-off deep scan)
+        default: "5"
+      today:
+        description: Expand the schedule as if it were this date (YYYY-MM-DD); blank means today
+        default: ""
+      limit:
+        description: Cap each shard at this many searches (0 = no cap). Use a small number to smoke-test.
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-fares
+  cancel-in-progress: false
+
+jobs:
+  # Sizes the run and fixes the date once for every shard. Counts only, no routes.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      count: ${{ steps.plan.outputs.count }}
+      today: ${{ steps.plan.outputs.today }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Size today's run
+        id: plan
+        env:
+          FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
+          TODAY: ${{ inputs.today }}
+        run: |
+          today_flag=""
+          if [ -n "$TODAY" ]; then today_flag="--today $TODAY"; fi
+          # 70 leaves a wide margin under the ~110-125 searches after which the site
+          # stops answering one runner, even for a shard heavy with long-haul routes.
+          python -m flight_fare_scraper.cli plan --spec-env FFS_ROUTES $today_flag \
+            --max-per-shard 70 --matrix-output "$GITHUB_OUTPUT"
+
+  track:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # under the 6h job ceiling, with room to finish the search in flight
+    strategy:
+      fail-fast: false # one shard being blocked shouldn't cost the others their data
+      max-parallel: 1
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Scrape today's searches and publish them
+        env:
+          FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
+          FFS_REDACT_LOGS: "1"
+          FFS_REDACT_SALT: ${{ secrets.FFS_REDACT_SALT }}
+          FFS_S3_ENDPOINT: ${{ secrets.FFS_S3_ENDPOINT }}
+          FFS_S3_BUCKET: ${{ secrets.FFS_S3_BUCKET }}
+          FFS_S3_KEY_ID: ${{ secrets.FFS_S3_KEY_ID }}
+          FFS_S3_SECRET: ${{ secrets.FFS_S3_SECRET }}
+          SHARD: ${{ matrix.shard }}
+          SHARD_COUNT: ${{ needs.plan.outputs.count }}
+          # 5 pages, price-sorted, plus the separate nonstop pass: enough to pin the
+          # cheapest fare and the cheapest nonstop, which is what the history is for.
+          # 20 pages mostly adds reseller duplicates of itineraries already captured,
+          # and at this volume it does not fit in the per-job time budget.
+          MAX_PAGES: ${{ inputs.max_pages || '5' }}
+          # From the plan job, not the runner's clock: shards run for hours one after
+          # another, and one starting after midnight UTC would otherwise expand a
+          # different day's schedule than the others.
+          TODAY: ${{ needs.plan.outputs.today }}
+          LIMIT: ${{ inputs.limit || '0' }}
+        run: |
+          today_flag="--today $TODAY"
+          # --log-file "" keeps the debug log (which carries search URLs) off this runner
+          # entirely; the console stays at INFO, where routes appear only as salted ids.
+          python -m flight_fare_scraper.cli track \
+            --spec-env FFS_ROUTES \
+            --shard "$SHARD/$SHARD_COUNT" \
+            --limit "$LIMIT" \
+            --max-pages "$MAX_PAGES" \
+            --tolerate-failures 3 \
+            $today_flag \
+            --db "run-$SHARD.duckdb" \
+            --push --run-id "${{ github.run_id }}-shard$SHARD" \
+            --summary "summaries/shard-$SHARD.json" \
+            --log-file ""
+
+      # Counts and exception types only -- no routes, prices, URLs or error text.
+      - name: Keep this shard's summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-summary-${{ matrix.shard }}
+          path: summaries/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Appends each shard's counts to run-log.csv and commits it. That commit is also
+  # what stops the repository looking idle: GitHub disables scheduled workflows in a
+  # public repo after 60 days with no repository activity, and workflow runs are not
+  # activity -- only commits are. Without this the tracker goes quiet with no warning.
+  log:
+    needs: track
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A personal access token makes this an ordinary push. GitHub has never
+          # documented whether a GITHUB_TOKEN commit resets the idle timer -- the
+          # bot-commit trick is community lore, not a guarantee -- so set
+          # FFS_KEEPALIVE_TOKEN if you want certainty.
+          token: ${{ secrets.FFS_KEEPALIVE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      # Appending a CSV needs nothing beyond the standard library, but importing the
+      # CLI pulls in duckdb and pandas, so this job needs the same dependencies.
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Collect the shard summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: run-summary-*
+          merge-multiple: true
+          path: summaries
+
+      - name: Append them to the run log
+        run: python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv
+
+      - name: Commit the run log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add run-log.csv
+          if git diff --staged --quiet; then
+            echo "run log unchanged"
+            exit 0
+          fi
+          git commit -m "Log fare tracking run ${{ github.run_id }}"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push rejected, rebasing (attempt $attempt)"
+            git pull --rebase
+          done
+          exit 1
