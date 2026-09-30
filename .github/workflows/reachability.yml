@@ -1,0 +1,73 @@
+# Manually triggered check: can the scraper still get results from a GitHub-hosted
+# (datacenter IP) runner, or is it being bot-blocked? Inputs have no defaults so a
+# public run log only ever shows what the operator typed.
+name: Reachability check
+
+on:
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: Origin airport or metro code
+        required: true
+      destination:
+        description: Destination airport or metro code
+        required: true
+      depart:
+        description: Departure date (YYYY-MM-DD, must be in the future)
+        required: true
+      return_date:
+        description: Return date (YYYY-MM-DD)
+        required: true
+      allow_stops:
+        description: Include connecting flights (more pages, a harder test)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Confirm Google Chrome is available
+        run: google-chrome --version
+
+      - name: Run one search
+        env:
+          FFS_REDACT_LOGS: "1"
+          FFS_REDACT_SALT: ${{ secrets.FFS_REDACT_SALT }}
+          ORIGIN: ${{ inputs.origin }}
+          DESTINATION: ${{ inputs.destination }}
+          DEPART: ${{ inputs.depart }}
+          RETURN_DATE: ${{ inputs.return_date }}
+          ALLOW_STOPS: ${{ inputs.allow_stops }}
+        run: |
+          stops_flag=""
+          if [ "$ALLOW_STOPS" = "true" ]; then stops_flag="--allow-stops"; fi
+          python -m flight_fare_scraper.cli search \
+            --origin "$ORIGIN" --destination "$DESTINATION" \
+            --depart "$DEPART" --return-date "$RETURN_DATE" \
+            $stops_flag --output results.csv --log-file ""
+
+      # Row count only. The results file holds prices and booking URLs, and the debug
+      # log holds search URLs with airport codes, so neither is uploaded anywhere public.
+      - name: Report row count
+        if: always()
+        run: |
+          if [ -f results.csv ]; then
+            echo "rows: $(($(wc -l < results.csv) - 1))"
+          else
+            echo "no results file"
+          fi

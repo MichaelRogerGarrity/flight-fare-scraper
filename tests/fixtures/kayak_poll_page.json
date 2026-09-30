@@ -1,0 +1,3074 @@
+{
+ "pageNumber": 1,
+ "pageSize": 50,
+ "status": "complete",
+ "filteredCount": 939,
+ "totalCount": 2318,
+ "pricePredictionData": {
+  "pricePrediction": {
+   "prediction": "WAIT",
+   "daysHorizon": 15,
+   "priceChange": {
+    "price": 170.0,
+    "currency": "USD",
+    "localizedPrice": "$170"
+   }
+  }
+ },
+ "results": [
+  {
+   "resultId": "5214fb4312d2de0a7b21002eba4d6caa",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-1",
+      "urlType": "relative"
+     },
+     "bookingId": "F7123183651468087788E025d2e692dc",
+     "providerCode": "KIWIVI",
+     "displayPrice": {
+      "price": 1020,
+      "currency": "USD",
+      "localizedPrice": "$1,020"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTMIA1797195600000ZG261797238800000AS6531797249600000AS143",
+       "approxDepartureTime": "9:25 pm",
+       "approxArrivalTime": "9:00 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "1797195600000ZG2616250835",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-8 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Wi-Fi available"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Streaming entertainment"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797238800000AS65304540619",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797249600000AS1407581600",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (winglets) (Narrow-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Streaming entertainment"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Preorder light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1020,
+       "currency": "USD",
+       "localizedPrice": "$1,020"
+      },
+      "totalPrice": {
+       "price": 1020,
+       "currency": "USD",
+       "localizedPrice": "$1,020"
+      },
+      "rawPrice": {
+       "price": 1020,
+       "currency": "USD",
+       "localizedPrice": "$1,020"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 176,
+        "currency": "USD",
+        "localizedPrice": "$176"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not Included<br>(+$176)"
+     },
+     "flags": {
+      "isSelfTransferProtection": true,
+      "hasVirtualInterline": true,
+      "hasLayoverConnection": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "AS": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 21 x 13 x 8in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 62in total"
+        }
+       }
+      ],
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "ZG": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 21 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "bookingOptionsBuckets": [
+    {
+     "id": "_SV",
+     "type": "FARE",
+     "localizedDisplayName": "Economy Cabin + Saver",
+     "localizedDisplayNames": [
+      "Economy Cabin",
+      "Saver"
+     ],
+     "cabinCode": "e",
+     "topPrice": {
+      "price": 1020,
+      "currency": "USD",
+      "localizedPrice": "$1,020"
+     },
+     "isUpsell": false,
+     "fareAmenities": [
+      {
+       "type": "CARRYON_BAG",
+       "restriction": "INCLUDED",
+       "prices": {
+        "FIRST_BAG": {
+         "price": 0,
+         "currency": "USD",
+         "localizedPrice": "$0"
+        }
+       }
+      },
+      {
+       "type": "CHECKED_BAG",
+       "restriction": "FEE",
+       "prices": {
+        "FIRST_BAG": {
+         "price": 176,
+         "currency": "USD",
+         "localizedPrice": "$176"
+        }
+       }
+      },
+      {
+       "type": "SEAT_SELECTION",
+       "restriction": "UNAVAILABLE"
+      },
+      {
+       "type": "LEGROOM",
+       "restriction": "FEE"
+      },
+      {
+       "type": "CHANGE",
+       "restriction": "UNAVAILABLE"
+      },
+      {
+       "type": "REFUNDABLE",
+       "restriction": "UNAVAILABLE"
+      }
+     ]
+    }
+   ],
+   "warnings": [
+    "AIRPORT_TRANSFER",
+    "SELF_TRANSFER"
+   ],
+   "isBest": true,
+   "isCheapest": true,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "5214fb4312d2de0a7b21002eba4d6caa",
+   "featuredBookingOptions": [
+    {
+     "bucketId": "_SV",
+     "winningBookingOptionIndex": 0,
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {
+      "winningBookingOptionIndex": 0
+     }
+    }
+   ],
+   "ratesTableBookingOptions": [
+    {
+     "bucketId": "_SV",
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {}
+    }
+   ],
+   "shareableId": "5214fb4312d2de0a7b21002eba4d6caa",
+   "shareableUrl": "/flights/MIA-TYO/2026-11-27/2026-12-13/f5214fb4312d2de0a7b21002eba4d6caa?viewRank=1",
+   "legs": [
+    {
+     "id": "FLLNRT1795820400000YP1361795939200000YP7312",
+     "hasOriginAirportChange": true,
+     "segments": [
+      {
+       "id": "1795820400000YP13618350025"
+      },
+      {
+       "id": "1795939200000YP73103450620"
+      }
+     ]
+    },
+    {
+     "id": "NRTMIA1797195600000ZG261797238800000AS6531797249600000AS143",
+     "hasDestinationAirportChange": true,
+     "segments": [
+      {
+       "id": "1797195600000ZG2616250835"
+      },
+      {
+       "id": "1797238800000AS65304540619",
+       "hasSelfTransfer": true
+      },
+      {
+       "id": "1797249600000AS1407581600"
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 1,
+   "totalDistinctFares": 1,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 1,
+   "totalProviders": 1
+  },
+  {
+   "resultId": "9296485df87e42ed23dcd2d9e5e1c143",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-2",
+      "urlType": "relative"
+     },
+     "bookingId": "F3872315526665167170E02be82a2ca4",
+     "providerCode": "CTRIPAIR",
+     "displayPrice": {
+      "price": 1156,
+      "currency": "USD",
+      "localizedPrice": "$1,156"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTFLL17971704000007C11041797195600000YP1352",
+       "approxDepartureTime": "2:00 pm",
+       "approxArrivalTime": "8:35 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "17971704000007C110409001205",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "29\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Preorder light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797195600000YP13516051535",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1156,
+       "currency": "USD",
+       "localizedPrice": "$1,156"
+      },
+      "totalPrice": {
+       "price": 1156,
+       "currency": "USD",
+       "localizedPrice": "$1,156"
+      },
+      "rawPrice": {
+       "price": 1156,
+       "currency": "USD",
+       "localizedPrice": "$1,156"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown"
+     },
+     "flags": {
+      "isSelfTransferProtection": false,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "7C": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-3",
+      "urlType": "relative"
+     },
+     "bookingId": "F-5945890222784078338E03514ac365e",
+     "providerCode": "EXPEDIAAIR",
+     "displayPrice": {
+      "price": 1283,
+      "currency": "USD",
+      "localizedPrice": "$1,283"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTFLL17971704000007C11041797195600000YP1352",
+       "approxDepartureTime": "2:00 pm",
+       "approxArrivalTime": "8:35 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "17971704000007C110409001205",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "29\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Preorder light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797195600000YP13516051535",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "totalPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "rawPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 1,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Included"
+     },
+     "flags": {
+      "isFreeCancellation": true,
+      "isSelfTransferProtection": false,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "7C": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-4",
+      "urlType": "relative"
+     },
+     "bookingId": "F4004295222232362296E08beadc0dfa",
+     "providerCode": "ORBITZAIRWHISKY",
+     "displayPrice": {
+      "price": 1283,
+      "currency": "USD",
+      "localizedPrice": "$1,283"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTFLL17971704000007C11041797195600000YP1352",
+       "approxDepartureTime": "2:00 pm",
+       "approxArrivalTime": "8:35 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "17971704000007C110409001205",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "29\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Preorder light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797195600000YP13516051535",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "totalPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "rawPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 1,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Included"
+     },
+     "flags": {
+      "isInstantBook": true,
+      "isFreeCancellation": true,
+      "isSelfTransferProtection": false,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "7C": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-5",
+      "urlType": "relative"
+     },
+     "bookingId": "F6147825137889912963E0c97dca130a",
+     "providerCode": "ORBITZAIR",
+     "displayPrice": {
+      "price": 1283,
+      "currency": "USD",
+      "localizedPrice": "$1,283"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTFLL17971704000007C11041797195600000YP1352",
+       "approxDepartureTime": "2:00 pm",
+       "approxArrivalTime": "8:35 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "17971704000007C110409001205",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "29\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Preorder light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797195600000YP13516051535",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "totalPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "rawPrice": {
+       "price": 1283,
+       "currency": "USD",
+       "localizedPrice": "$1,283"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 1,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Included"
+     },
+     "flags": {
+      "isFreeCancellation": true,
+      "isSelfTransferProtection": false,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "7C": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "bookingOptionsBuckets": [
+    {
+     "id": "e",
+     "type": "FARE",
+     "localizedDisplayName": "Economy Cabin",
+     "localizedDisplayNames": [
+      "Economy Cabin"
+     ],
+     "cabinCode": "e",
+     "topPrice": {
+      "price": 1156,
+      "currency": "USD",
+      "localizedPrice": "$1,156"
+     },
+     "isUpsell": false,
+     "fareAmenities": [
+      {
+       "type": "CARRYON_BAG",
+       "restriction": "INCLUDED",
+       "prices": {
+        "FIRST_BAG": {
+         "price": 0,
+         "currency": "USD",
+         "localizedPrice": "$0"
+        }
+       }
+      },
+      {
+       "type": "CHECKED_BAG",
+       "restriction": "UNKNOWN"
+      },
+      {
+       "type": "SEAT_SELECTION",
+       "restriction": "UNKNOWN"
+      },
+      {
+       "type": "LEGROOM",
+       "restriction": "UNKNOWN"
+      },
+      {
+       "type": "CHANGE",
+       "restriction": "UNKNOWN"
+      },
+      {
+       "type": "REFUNDABLE",
+       "restriction": "UNKNOWN"
+      }
+     ]
+    }
+   ],
+   "warnings": [
+    "SELF_TRANSFER"
+   ],
+   "isBest": false,
+   "isCheapest": false,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "9296485df87e42ed23dcd2d9e5e1c143",
+   "featuredBookingOptions": [
+    {
+     "bucketId": "e",
+     "winningBookingOptionIndex": 0,
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {
+      "winningBookingOptionIndex": 0
+     }
+    }
+   ],
+   "ratesTableBookingOptions": [
+    {
+     "bucketId": "e",
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {}
+    }
+   ],
+   "shareableId": "9296485df87e42ed23dcd2d9e5e1c143",
+   "shareableUrl": "/flights/MIA-TYO/2026-11-27/2026-12-13/f9296485df87e42ed23dcd2d9e5e1c143?viewRank=8",
+   "legs": [
+    {
+     "id": "FLLNRT1795820400000YP1361795939200000YP7312",
+     "segments": [
+      {
+       "id": "1795820400000YP13618350025"
+      },
+      {
+       "id": "1795939200000YP73103450620"
+      }
+     ]
+    },
+    {
+     "id": "NRTFLL17971704000007C11041797195600000YP1352",
+     "segments": [
+      {
+       "id": "17971704000007C110409001205"
+      },
+      {
+       "id": "1797195600000YP13516051535",
+       "hasSelfTransfer": true
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 5,
+   "totalDistinctFares": 1,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 8,
+   "totalProviders": 4
+  },
+  {
+   "resultId": "d3083f7b18a19c4c3aeb78093f397033",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-6",
+      "urlType": "relative"
+     },
+     "bookingId": "F2280416995031075875E02d367a32fe",
+     "providerCode": "BUDGETAIR",
+     "displayPrice": {
+      "price": 1034,
+      "currency": "USD",
+      "localizedPrice": "$1,034"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTMIA1797170400000ZG241797163200000F943461797177600000F96903",
+       "approxDepartureTime": "2:45 pm",
+       "approxArrivalTime": "9:58 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "1797170400000ZG2409450230",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-8 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Wi-Fi available"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Streaming entertainment"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797163200000F9434607251052",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Airbus A321neo (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "28\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Premium snacks (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797177600000F969011391658",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Airbus A318/A319/A320/A321 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "28\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Premium snacks (fee)"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1034,
+       "currency": "USD",
+       "localizedPrice": "$1,034"
+      },
+      "totalPrice": {
+       "price": 1034,
+       "currency": "USD",
+       "localizedPrice": "$1,034"
+      },
+      "rawPrice": {
+       "price": 1034,
+       "currency": "USD",
+       "localizedPrice": "$1,034"
+      },
+      "carryOnBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Unknown",
+      "checkedBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 1,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Included"
+     },
+     "flags": {
+      "isSelfTransferProtection": true,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "F9": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 17 x 13 x 7in"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 23 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 62in total"
+        }
+       }
+      ],
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "ZG": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 21 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-7",
+      "urlType": "relative"
+     },
+     "bookingId": "F1575575269561913062E0767d546b6d",
+     "providerCode": "KIWIVI",
+     "displayPrice": {
+      "price": 1104,
+      "currency": "USD",
+      "localizedPrice": "$1,104"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTMIA1797170400000ZG241797163200000F943461797177600000F96903",
+       "approxDepartureTime": "2:45 pm",
+       "approxArrivalTime": "9:58 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "1797170400000ZG2409450230",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-8 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Wi-Fi available"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Streaming entertainment"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797163200000F9434607251052",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Airbus A321neo (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "28\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Premium snacks (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797177600000F969011391658",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Airbus A318/A319/A320/A321 (Narrow-body jet)"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "28\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Premium snacks (fee)"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1104,
+       "currency": "USD",
+       "localizedPrice": "$1,104"
+      },
+      "totalPrice": {
+       "price": 1104,
+       "currency": "USD",
+       "localizedPrice": "$1,104"
+      },
+      "rawPrice": {
+       "price": 1104,
+       "currency": "USD",
+       "localizedPrice": "$1,104"
+      },
+      "carryOnBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 104,
+        "currency": "USD",
+        "localizedPrice": "$104"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Not Included<br>(+$104)",
+      "checkedBagData": {
+       "status": "FEE",
+       "displayPrice": {
+        "price": 211,
+        "currency": "USD",
+        "localizedPrice": "$211"
+       },
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Not Included<br>(+$211)"
+     },
+     "flags": {
+      "isSelfTransferProtection": true,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "F9": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 17 x 13 x 7in"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 23 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 62in total"
+        }
+       }
+      ],
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "ZG": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 21 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 79in total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "bookingOptionsBuckets": [
+    {
+     "id": "_BASIC",
+     "type": "FARE",
+     "localizedDisplayName": "Economy Cabin + Basic",
+     "localizedDisplayNames": [
+      "Economy Cabin",
+      "Basic"
+     ],
+     "cabinCode": "e",
+     "topPrice": {
+      "price": 1034,
+      "currency": "USD",
+      "localizedPrice": "$1,034"
+     },
+     "isUpsell": false,
+     "fareAmenities": [
+      {
+       "type": "CARRYON_BAG",
+       "restriction": "FEE"
+      },
+      {
+       "type": "CHECKED_BAG",
+       "restriction": "INCLUDED",
+       "prices": {
+        "FIRST_BAG": {
+         "price": 0,
+         "currency": "USD",
+         "localizedPrice": "$0"
+        }
+       },
+       "includedCheckedBagCount": 1
+      },
+      {
+       "type": "SEAT_SELECTION",
+       "restriction": "FEE"
+      },
+      {
+       "type": "LEGROOM",
+       "restriction": "FEE"
+      },
+      {
+       "type": "CHANGE",
+       "restriction": "FEE"
+      },
+      {
+       "type": "REFUNDABLE",
+       "restriction": "UNAVAILABLE"
+      }
+     ]
+    }
+   ],
+   "warnings": [
+    "SELF_TRANSFER"
+   ],
+   "isBest": false,
+   "isCheapest": false,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "d3083f7b18a19c4c3aeb78093f397033",
+   "featuredBookingOptions": [
+    {
+     "bucketId": "_BASIC",
+     "winningBookingOptionIndex": 0,
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0,
+        1
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {
+      "winningBookingOptionIndex": 0
+     }
+    }
+   ],
+   "ratesTableBookingOptions": [
+    {
+     "bucketId": "_BASIC",
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0,
+        1
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {}
+    }
+   ],
+   "shareableId": "d3083f7b18a19c4c3aeb78093f397033",
+   "shareableUrl": "/flights/MIA-TYO/2026-11-27/2026-12-13/fd3083f7b18a19c4c3aeb78093f397033?viewRank=2",
+   "legs": [
+    {
+     "id": "FLLNRT1795820400000YP1361795939200000YP7312",
+     "hasOriginAirportChange": true,
+     "segments": [
+      {
+       "id": "1795820400000YP13618350025"
+      },
+      {
+       "id": "1795939200000YP73103450620"
+      }
+     ]
+    },
+    {
+     "id": "NRTMIA1797170400000ZG241797163200000F943461797177600000F96903",
+     "hasDestinationAirportChange": true,
+     "segments": [
+      {
+       "id": "1797170400000ZG2409450230"
+      },
+      {
+       "id": "1797163200000F9434607251052",
+       "hasSelfTransfer": true
+      },
+      {
+       "id": "1797177600000F969011391658",
+       "hasSelfTransfer": true
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 2,
+   "totalDistinctFares": 1,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 2,
+   "totalProviders": 2
+  },
+  {
+   "resultId": "8d3254d605f0e3e159380aabe5320377",
+   "type": "core",
+   "bookingOptions": [
+    {
+     "bookingUrl": {
+      "url": "/book/flight?code=fixture-8",
+      "urlType": "relative"
+     },
+     "bookingId": "F4286367922370804916E055f553097d",
+     "providerCode": "AIRTICKETS24DOTCOMVI",
+     "displayPrice": {
+      "price": 1153,
+      "currency": "USD",
+      "localizedPrice": "$1,153"
+     },
+     "legFarings": [
+      {
+       "legId": "FLLNRT1795820400000YP1361795939200000YP7312",
+       "approxDepartureTime": "11:35 pm",
+       "approxArrivalTime": "11:20 am",
+       "segmentFarings": [
+        {
+         "segmentId": "1795820400000YP13618350025",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "33\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meal provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1795939200000YP73103450620",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      },
+      {
+       "legId": "NRTMIA1797184800000WS811797170400000WS6401797195600000AC87883",
+       "approxDepartureTime": "6:30 pm",
+       "approxArrivalTime": "10:38 pm",
+       "segmentFarings": [
+        {
+         "segmentId": "1797184800000WS8113300735",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 787-9 Dreamliner (Wide-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Basic web browsing (fee)"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Seatback on-demand video"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Meals provided"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797170400000WS64009251420",
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Boeing 737-800 (winglets) (Narrow-body jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Wi-Fi available"
+          },
+          {
+           "icon": "POWER",
+           "msg": "Power & USB outlets"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "30\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Light meal (fee)"
+          }
+         ],
+         "isStudentFare": false
+        },
+        {
+         "segmentId": "1797195600000AC878816001738",
+         "isSelfTransfer": true,
+         "cabinDisplay": "Economy",
+         "cabinCode": "e",
+         "segmentQualityItems": [
+          {
+           "icon": "FLIGHT",
+           "msg": "Canadair (Bombardier) Regional Jet 900 (Regional jet)"
+          },
+          {
+           "icon": "WIFI",
+           "msg": "Streaming capable Wi-Fi"
+          },
+          {
+           "icon": "ENTERTAINMENT",
+           "msg": "Chance of device streaming"
+          },
+          {
+           "icon": "POWER",
+           "msg": "USB outlet"
+          },
+          {
+           "icon": "SEAT",
+           "msg": "31\" seat pitch"
+          },
+          {
+           "icon": "FOOD",
+           "msg": "Snacks provided"
+          }
+         ],
+         "isStudentFare": false
+        }
+       ]
+      }
+     ],
+     "fees": {
+      "basePrice": {
+       "price": 1153,
+       "currency": "USD",
+       "localizedPrice": "$1,153"
+      },
+      "totalPrice": {
+       "price": 1153,
+       "currency": "USD",
+       "localizedPrice": "$1,153"
+      },
+      "rawPrice": {
+       "price": 1153,
+       "currency": "USD",
+       "localizedPrice": "$1,153"
+      },
+      "carryOnBagData": {
+       "status": "INCLUDED",
+       "displayPrice": {
+        "price": 0,
+        "currency": "USD",
+        "localizedPrice": "$0"
+       },
+       "numSelected": 0
+      },
+      "carryOnDisplay": "Included",
+      "checkedBagData": {
+       "status": "UNKNOWN",
+       "numSelected": 0,
+       "secondBag": {
+        "status": "UNKNOWN"
+       }
+      },
+      "checkedBagDisplay": "Unknown"
+     },
+     "flags": {
+      "isFreeCancellation": true,
+      "isSelfTransferProtection": true,
+      "hasVirtualInterline": true
+     },
+     "splitBookingOptions": [],
+     "currency": "USD",
+     "countryName": "United States",
+     "baggagePolicyInfo": {
+      "AC": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 16 x 12 x 6in"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 21 x 15 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 62in total"
+        }
+       }
+      ],
+      "YP": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {}
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {}
+       }
+      ],
+      "WS": [
+       {
+        "bagType": "PERSONAL",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 16 x 12 x 5in"
+        }
+       },
+       {
+        "bagType": "CARRYON",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 20 x 14 x 9in"
+        }
+       },
+       {
+        "bagType": "CHECKED",
+        "bagRestriction": {
+         "DIMENSIONS": "Up to 61in total"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   "bookingOptionsBuckets": [
+    {
+     "id": "_ULTRABASIC_ECONOMY_BASIC",
+     "type": "FARE",
+     "localizedDisplayName": "Economy Cabin + UltraBasic + Basic Economy",
+     "localizedDisplayNames": [
+      "Economy Cabin",
+      "UltraBasic",
+      "Basic Economy"
+     ],
+     "cabinCode": "e",
+     "topPrice": {
+      "price": 1153,
+      "currency": "USD",
+      "localizedPrice": "$1,153"
+     },
+     "isUpsell": false,
+     "fareAmenities": [
+      {
+       "type": "CARRYON_BAG",
+       "restriction": "INCLUDED",
+       "prices": {
+        "FIRST_BAG": {
+         "price": 0,
+         "currency": "USD",
+         "localizedPrice": "$0"
+        }
+       }
+      },
+      {
+       "type": "CHECKED_BAG",
+       "restriction": "FEE"
+      },
+      {
+       "type": "SEAT_SELECTION",
+       "restriction": "FEE"
+      },
+      {
+       "type": "LEGROOM",
+       "restriction": "FEE"
+      },
+      {
+       "type": "CHANGE",
+       "restriction": "UNAVAILABLE"
+      },
+      {
+       "type": "REFUNDABLE",
+       "restriction": "UNAVAILABLE"
+      }
+     ]
+    }
+   ],
+   "warnings": [
+    "SELF_TRANSFER"
+   ],
+   "isBest": false,
+   "isCheapest": false,
+   "isCheapestDirect": false,
+   "isFeatured": false,
+   "isSaved": false,
+   "tripId": "8d3254d605f0e3e159380aabe5320377",
+   "featuredBookingOptions": [
+    {
+     "bucketId": "_ULTRABASIC_ECONOMY_BASIC",
+     "winningBookingOptionIndex": 0,
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {
+      "winningBookingOptionIndex": 0
+     }
+    }
+   ],
+   "ratesTableBookingOptions": [
+    {
+     "bucketId": "_ULTRABASIC_ECONOMY_BASIC",
+     "bookingOptionsGroups": [
+      {
+       "type": "ALL",
+       "indices": [
+        0
+       ],
+       "expanded": false
+      }
+     ],
+     "specialBookingOptionIndices": {}
+    }
+   ],
+   "shareableId": "8d3254d605f0e3e159380aabe5320377",
+   "shareableUrl": "/flights/MIA-TYO/2026-11-27/2026-12-13/f8d3254d605f0e3e159380aabe5320377?viewRank=3",
+   "legs": [
+    {
+     "id": "FLLNRT1795820400000YP1361795939200000YP7312",
+     "hasOriginAirportChange": true,
+     "segments": [
+      {
+       "id": "1795820400000YP13618350025"
+      },
+      {
+       "id": "1795939200000YP73103450620"
+      }
+     ]
+    },
+    {
+     "id": "NRTMIA1797184800000WS811797170400000WS6401797195600000AC87883",
+     "hasDestinationAirportChange": true,
+     "segments": [
+      {
+       "id": "1797184800000WS8113300735"
+      },
+      {
+       "id": "1797170400000WS64009251420"
+      },
+      {
+       "id": "1797195600000AC878816001738",
+       "hasSelfTransfer": true
+      }
+     ]
+    }
+   ],
+   "totalBookingOptions": 1,
+   "totalDistinctFares": 1,
+   "hasHackerFares": false,
+   "enableSaveForLater": true,
+   "viewRank": 3,
+   "totalProviders": 1
+  }
+ ],
+ "legs": {
+  "FLLNRT1795820400000YP1361795939200000YP7312": {
+   "duration": 1305,
+   "segments": [
+    {
+     "id": "1795820400000YP13618350025",
+     "isArrivalDateMismatch": true,
+     "layover": {
+      "duration": 200,
+      "isLong": true,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1795939200000YP73103450620"
+    }
+   ],
+   "arrival": "2026-11-29T11:20:00",
+   "departure": "2026-11-27T23:35:00"
+  },
+  "NRTMIA1797170400000ZG241797163200000F943461797177600000F96903": {
+   "duration": 1273,
+   "segments": [
+    {
+     "id": "1797170400000ZG2409450230",
+     "layover": {
+      "duration": 295,
+      "isLong": true,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797163200000F9434607251052",
+     "layover": {
+      "duration": 47,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797177600000F969011391658"
+    }
+   ],
+   "arrival": "2026-12-13T21:58:00",
+   "departure": "2026-12-13T14:45:00"
+  },
+  "NRTMIA1797184800000WS811797170400000WS6401797195600000AC87883": {
+   "duration": 1088,
+   "segments": [
+    {
+     "id": "1797184800000WS8113300735",
+     "layover": {
+      "duration": 110,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797170400000WS64009251420",
+     "layover": {
+      "duration": 100,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797195600000AC878816001738"
+    }
+   ],
+   "arrival": "2026-12-13T22:38:00",
+   "departure": "2026-12-13T18:30:00"
+  },
+  "NRTMIA1797195600000ZG261797238800000AS6531797249600000AS143": {
+   "duration": 2255,
+   "segments": [
+    {
+     "id": "1797195600000ZG2616250835",
+     "hasDestinationAirportChange": true,
+     "layover": {
+      "duration": 1219,
+      "isLong": true,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797238800000AS65304540619",
+     "hasOriginAirportChange": true,
+     "isDepartureDateMismatch": true,
+     "layover": {
+      "duration": 99,
+      "isLong": false,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797249600000AS1407581600"
+    }
+   ],
+   "arrival": "2026-12-14T21:00:00",
+   "departure": "2026-12-13T21:25:00"
+  },
+  "NRTFLL17971704000007C11041797195600000YP1352": {
+   "duration": 1235,
+   "segments": [
+    {
+     "id": "17971704000007C110409001205",
+     "layover": {
+      "duration": 240,
+      "isLong": true,
+      "isShort": false
+     }
+    },
+    {
+     "id": "1797195600000YP13516051535"
+    }
+   ],
+   "arrival": "2026-12-13T20:35:00",
+   "departure": "2026-12-13T14:00:00"
+  }
+ },
+ "segments": {
+  "1795820400000YP13618350025": {
+   "airline": "YP",
+   "flightNumber": "136",
+   "origin": "FLL",
+   "destination": "ICN",
+   "arrival": "2026-11-29T05:25:00",
+   "departure": "2026-11-27T23:35:00",
+   "equipmentTypeName": "Boeing 787-9 Dreamliner",
+   "duration": 950,
+   "isOvernight": true
+  },
+  "1795939200000YP73103450620": {
+   "airline": "YP",
+   "flightNumber": "731",
+   "origin": "ICN",
+   "destination": "NRT",
+   "arrival": "2026-11-29T11:20:00",
+   "departure": "2026-11-29T08:45:00",
+   "equipmentTypeName": "Boeing 787-9 Dreamliner",
+   "duration": 155
+  },
+  "1797163200000F9434607251052": {
+   "airline": "F9",
+   "flightNumber": "4346",
+   "origin": "LAX",
+   "destination": "DEN",
+   "arrival": "2026-12-13T15:52:00",
+   "departure": "2026-12-13T12:25:00",
+   "equipmentTypeName": "Airbus A321neo",
+   "duration": 147
+  },
+  "17971704000007C110409001205": {
+   "airline": "7C",
+   "flightNumber": "1104",
+   "origin": "NRT",
+   "destination": "ICN",
+   "arrival": "2026-12-13T17:05:00",
+   "departure": "2026-12-13T14:00:00",
+   "equipmentTypeName": "Boeing 737-800",
+   "duration": 185
+  },
+  "1797170400000WS64009251420": {
+   "airline": "WS",
+   "flightNumber": "640",
+   "origin": "YYC",
+   "destination": "YYZ",
+   "arrival": "2026-12-13T19:20:00",
+   "departure": "2026-12-13T14:25:00",
+   "equipmentTypeName": "Boeing 737-800 (winglets)",
+   "duration": 175
+  },
+  "1797170400000ZG2409450230": {
+   "airline": "ZG",
+   "flightNumber": "24",
+   "origin": "NRT",
+   "destination": "LAX",
+   "arrival": "2026-12-13T07:30:00",
+   "departure": "2026-12-13T14:45:00",
+   "equipmentTypeName": "Boeing 787-8 Dreamliner",
+   "duration": 585,
+   "isOvernight": true
+  },
+  "1797177600000F969011391658": {
+   "airline": "F9",
+   "flightNumber": "690",
+   "origin": "DEN",
+   "destination": "MIA",
+   "arrival": "2026-12-13T21:58:00",
+   "departure": "2026-12-13T16:39:00",
+   "equipmentTypeName": "Airbus A318/A319/A320/A321",
+   "duration": 199
+  },
+  "1797184800000WS8113300735": {
+   "airline": "WS",
+   "flightNumber": "81",
+   "origin": "NRT",
+   "destination": "YYC",
+   "arrival": "2026-12-13T12:35:00",
+   "departure": "2026-12-13T18:30:00",
+   "equipmentTypeName": "Boeing 787-9 Dreamliner",
+   "duration": 545,
+   "isOvernight": true
+  },
+  "1797195600000AC878816001738": {
+   "airline": "AC",
+   "flightNumber": "8788",
+   "operationalDisplay": "Air Canada Express - Jazz",
+   "origin": "YYZ",
+   "destination": "MIA",
+   "arrival": "2026-12-13T22:38:00",
+   "departure": "2026-12-13T21:00:00",
+   "equipmentTypeName": "Canadair (Bombardier) Regional Jet 900",
+   "duration": 98
+  },
+  "1797195600000YP13516051535": {
+   "airline": "YP",
+   "flightNumber": "135",
+   "origin": "ICN",
+   "destination": "FLL",
+   "arrival": "2026-12-13T20:35:00",
+   "departure": "2026-12-13T21:05:00",
+   "equipmentTypeName": "Boeing 787-9 Dreamliner",
+   "duration": 810
+  },
+  "1797195600000ZG2616250835": {
+   "airline": "ZG",
+   "flightNumber": "26",
+   "origin": "NRT",
+   "destination": "SFO",
+   "arrival": "2026-12-13T13:35:00",
+   "departure": "2026-12-13T21:25:00",
+   "equipmentTypeName": "Boeing 787-8 Dreamliner",
+   "duration": 550,
+   "isOvernight": true
+  },
+  "1797238800000AS65304540619": {
+   "airline": "AS",
+   "flightNumber": "653",
+   "origin": "SJC",
+   "destination": "SAN",
+   "arrival": "2026-12-14T11:19:00",
+   "departure": "2026-12-14T09:54:00",
+   "duration": 85
+  },
+  "1797249600000AS1407581600": {
+   "airline": "AS",
+   "flightNumber": "14",
+   "origin": "SAN",
+   "destination": "MIA",
+   "arrival": "2026-12-14T21:00:00",
+   "departure": "2026-12-14T12:58:00",
+   "equipmentTypeName": "Boeing 737-800 (winglets)",
+   "duration": 302
+  }
+ },
+ "airlines": {
+  "7C": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/7C.png?crop=false&width=108&height=92&fallback=default3.png&_v=4a85eb1bae475ed7fedea1d30aa028a7",
+    "urlType": "absolute"
+   },
+   "name": "Jeju Air",
+   "airlineFeeUrl": {
+    "url": "https://www.jejuair.net/en/linkService/boardingProcessGuide/baggageGuide.do",
+    "urlType": "absolute"
+   }
+  },
+  "AC": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/AC.png?crop=false&width=108&height=92&fallback=default1.png&_v=0c9c508395bb634d0a68fb50eb9f3c57",
+    "urlType": "absolute"
+   },
+   "name": "Air Canada",
+   "airlineFeeUrl": {
+    "url": "https://www.aircanada.com/us/en/aco/home/plan/baggage/checked.html",
+    "urlType": "absolute"
+   }
+  },
+  "AS": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/AS.png?crop=false&width=108&height=92&fallback=default2.png&_v=7e7c4110616a97db4d99676711cb7247",
+    "urlType": "absolute"
+   },
+   "name": "Alaska Airlines",
+   "airlineFeeUrl": {
+    "url": "https://www.alaskaair.com/content/travel-info/policies/baggage-checked.aspx?lid=home-page:quick-links::checked-baggage",
+    "urlType": "absolute"
+   }
+  },
+  "F9": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/F9.png?crop=false&width=108&height=92&fallback=default2.png&_v=e8753b81046d83a76e6d2b5cee6dcfb2",
+    "urlType": "absolute"
+   },
+   "name": "Frontier",
+   "airlineFeeUrl": {
+    "url": "https://www.flyfrontier.com/travel/travel-info/bag-options/#info",
+    "urlType": "absolute"
+   }
+  },
+  "WS": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/WS.png?crop=false&width=108&height=92&fallback=default3.png&_v=c85f22a53c5935ae46719073b21787c8",
+    "urlType": "absolute"
+   },
+   "name": "WestJet",
+   "airlineFeeUrl": {
+    "url": "https://www.westjet.com/en-ca/travel-info/fares/service-fees",
+    "urlType": "absolute"
+   }
+  },
+  "YP": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/YP.png?crop=false&width=108&height=92&fallback=default2.png&_v=53a6622fce4fee61b941a30628a86bb7",
+    "urlType": "absolute"
+   },
+   "name": "AIR PREMIA",
+   "airlineFeeUrl": {
+    "url": "https://en.airpremia.com/",
+    "urlType": "absolute"
+   }
+  },
+  "ZG": {
+   "logoUrl": {
+    "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/ZG.png?crop=false&width=108&height=92&fallback=default3.png&_v=5bd3acdd7733230c351c7cd9c87893c1",
+    "urlType": "absolute"
+   },
+   "name": "ZIPAIR",
+   "airlineFeeUrl": {
+    "url": "https://www.zipair.net/campaign",
+    "urlType": "absolute"
+   }
+  }
+ },
+ "providers": {
+  "AIRTICKETS24DOTCOMVI": {
+   "displayName": "Mytrip",
+   "logoUrls": [
+    {
+     "name": "Mytrip",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/AIRTICKETS24DOTCOM.png?crop=false&width=108&height=92&fallback=default1.png&_v=4b8928cb299e525543498f7097579019",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/AIRTICKETS24DOTCOM.png?crop=false&width=88&height=31&fallback=default1.png&_v=1e84439f35e4558f94e874158f6a3eae",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/AIRTICKETS24DOTCOM.png?crop=false&width=102&height=18&fallback=default1.png&_v=1e84439f35e4558f94e874158f6a3eae",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "10.0",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "BUDGETAIR": {
+   "displayName": "BudgetAir",
+   "logoUrls": [
+    {
+     "name": "BudgetAir",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/BUDGETAIR.png?crop=false&width=108&height=92&fallback=default1.png&_v=2dbda150988da82c7da8a38b12f3ac53",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/BUDGETAIR.png?crop=false&width=88&height=31&fallback=default1.png&_v=177104dc3b6ae3c8860d2024a287fa08",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/BUDGETAIR.png?crop=false&width=102&height=18&fallback=default1.png&_v=177104dc3b6ae3c8860d2024a287fa08",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "6.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "CTRIPAIR": {
+   "displayName": "Trip.com",
+   "logoUrls": [
+    {
+     "name": "Trip.com",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/CTRIPAIR.png?crop=false&width=108&height=92&fallback=default1.png&_v=2408729b8def29d628c429db966a3157",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/CTRIPAIR.png?crop=false&width=88&height=31&fallback=default1.png&_v=6ffbb6778ab7d3ee8da1e965010b225e",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/CTRIPAIR.png?crop=false&width=102&height=18&fallback=default1.png&_v=6ffbb6778ab7d3ee8da1e965010b225e",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "4.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "EXPEDIAAIR": {
+   "displayName": "Expedia",
+   "logoUrls": [
+    {
+     "name": "Expedia",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/EXPEDIAAIR.png?crop=false&width=108&height=92&fallback=default3.png&_v=256f53d3d3c5bfff6cae94a2acfd9af7",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/EXPEDIAAIR.png?crop=false&width=88&height=31&fallback=default3.png&_v=25d737579c9bbd2c9c9567822170dda6",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/EXPEDIAAIR.png?crop=false&width=102&height=18&fallback=default3.png&_v=25d737579c9bbd2c9c9567822170dda6",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "6.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "KIWIVI": {
+   "displayName": "Kiwi.com",
+   "logoUrls": [
+    {
+     "name": "Kiwi.com",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/SKYPICKER.png?crop=false&width=108&height=92&fallback=default3.png&_v=554e7b58a40b798a35cbdf6f30ba584b",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/SKYPICKER.png?crop=false&width=88&height=31&fallback=default3.png&_v=0cd3e94b7e8a5f027bff27942a213709",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/SKYPICKER.png?crop=false&width=102&height=18&fallback=default3.png&_v=0cd3e94b7e8a5f027bff27942a213709",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "6.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "ORBITZAIR": {
+   "displayName": "Orbitz",
+   "logoUrls": [
+    {
+     "name": "Orbitz",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/ORBITZAIR.png?crop=false&width=108&height=92&fallback=default2.png&_v=8e1315f6a4239f17f621abe59cade90c",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/ORBITZAIR.png?crop=false&width=88&height=31&fallback=default2.png&_v=c995729cf8f2f07a044ef4f73c0477e6",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/ORBITZAIR.png?crop=false&width=102&height=18&fallback=default2.png&_v=c995729cf8f2f07a044ef4f73c0477e6",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "7.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  },
+  "ORBITZAIRWHISKY": {
+   "displayName": "Orbitz",
+   "logoUrls": [
+    {
+     "name": "Orbitz",
+     "imageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/v/ORBITZAIRWHISKY.png?crop=false&width=108&height=92&fallback=default3.png&_v=8e1315f6a4239f17f621abe59cade90c",
+      "urlType": "absolute"
+     },
+     "horizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/ORBITZAIRWHISKY.png?crop=false&width=88&height=31&fallback=default3.png&_v=c995729cf8f2f07a044ef4f73c0477e6",
+      "urlType": "absolute"
+     },
+     "wideHorizontalImageUrl": {
+      "url": "https://content.r9cdn.net/rimg/provider-logos/airlines/h/ORBITZAIRWHISKY.png?crop=false&width=102&height=18&fallback=default3.png&_v=c995729cf8f2f07a044ef4f73c0477e6",
+      "urlType": "absolute"
+     }
+    }
+   ],
+   "providerQualityScore": {
+    "badgeType": "PQS_VALUE",
+    "badgeText": "7.5",
+    "description": "We rate partners based on multiple factors including price accuracy, customer service quality, and transparency of fees as well as feedback from users."
+   }
+  }
+ }
+}
