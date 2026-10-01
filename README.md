@@ -100,6 +100,13 @@ long-haul searches, which make several times more requests than a domestic one.
 Each shard writes to a throwaway local DuckDB file and publishes its rows to object
 storage, so no state has to survive the runner.
 
+A search whose later pages won't load keeps the pages it already has rather than
+failing. Results are price-sorted, so page 1 alone holds the cheapest fares; the run log's
+`partial` column counts how many searches were cut short this way. The usual cause is
+something drawn over the "Show more results" button on one runner -- the scraper first
+retries the click from inside the page, which ignores overlays, and if that fails the
+warning it logs says what host and language were served and what was covering the button.
+
 A shard tolerates up to three failed searches before it goes red: at ~70 searches a
 shard, one transient timeout is noise, and a daily unattended job that cries wolf gets
 ignored. Any bot-block fails the run regardless of the tolerance, since that is the

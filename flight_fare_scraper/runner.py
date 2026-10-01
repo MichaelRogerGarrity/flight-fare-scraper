@@ -31,6 +31,7 @@ class BatchReport:
     results: List[FlightResult] = field(default_factory=list)
     succeeded: List[SearchQuery] = field(default_factory=list)
     failures: List[SearchFailure] = field(default_factory=list)
+    truncated: int = 0  # searches that succeeded with only their first pages
 
 
 def _described(error: BaseException) -> str:
@@ -120,6 +121,7 @@ def run_queries(
                 report.results.extend(results)
                 report.succeeded.append(query)
         finally:
+            report.truncated += getattr(scraper, "truncated_searches", 0)
             scraper.__exit__(None, None, None)
 
     _log_summary(len(queries), report)
@@ -127,6 +129,9 @@ def run_queries(
 
 
 def _log_summary(total: int, report: BatchReport) -> None:
+    if report.truncated:
+        logger.warning("PARTIAL_RESULTS: %d of %d searches kept only their first pages "
+                       "because a later page wouldn't load", report.truncated, total)
     if not report.failures:
         logger.info("batch complete: %d/%d searches succeeded, %d rows", total, total, len(report.results))
         return

@@ -182,7 +182,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 RUN_LOG_FIELDS = (
     "run_date", "run_id", "shard", "searches", "succeeded", "failed",
-    "bot_blocked", "rows", "max_pages", "seconds", "error_types",
+    "bot_blocked", "rows", "max_pages", "seconds", "error_types", "partial",
 )
 
 
@@ -201,6 +201,7 @@ def summarize(report, queries: List[SearchQuery], args: argparse.Namespace,
         "succeeded": len(report.succeeded),
         "failed": len(report.failures),
         "bot_blocked": sum(failure.bot_blocked for failure in report.failures),
+        "partial": getattr(report, "truncated", 0),
         "rows": rows,
         "max_pages": args.max_pages if args.max_pages is not None else "",
         "seconds": round(seconds),
@@ -264,7 +265,19 @@ def run_runlog(args: argparse.Namespace) -> int:
     seen = set()
     if has_rows:
         with out.open(newline="", encoding="utf-8") as handle:
-            seen = {(row["run_date"], row["run_id"], row["shard"]) for row in csv.DictReader(handle)}
+            reader = csv.DictReader(handle)
+            existing = list(reader)
+            header = tuple(reader.fieldnames or ())
+        seen = {(row["run_date"], row["run_id"], row["shard"]) for row in existing}
+        if header != RUN_LOG_FIELDS:
+            # The log gained a column since this file was started. Rewrite it under the
+            # current header, or every appended row would sit one column out of line.
+            with out.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=RUN_LOG_FIELDS, extrasaction="ignore")
+                writer.writeheader()
+                for row in existing:
+                    writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
+            logger.info("upgraded %s to the current columns", out)
 
     appended = 0
     with out.open("a", newline="", encoding="utf-8") as handle:

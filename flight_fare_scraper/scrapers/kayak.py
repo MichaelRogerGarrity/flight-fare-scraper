@@ -31,6 +31,29 @@ POLL_INTERVAL_MS = 400
 # Random pauses so requests don't arrive at a fixed machine rhythm.
 PAGE_JITTER_S = (1.5, 4.0)  # before each "Show more results" click
 PASS_JITTER_S = (5.0, 15.0)  # between a search's main and nonstop passes
+# How long to wait for an ordinary click on the button before clicking it from
+# inside the page instead. The full page timeout is far too long to spend here.
+CLICK_TIMEOUT_S = 15.0
+
+# Runs on the "Show more results" element. Reports what is drawn on top of it,
+# which is what an ordinary click was waiting on. Tag, id and class names only.
+_BUTTON_FACTS_JS = """
+element => {
+  element.scrollIntoView({block: 'center'});
+  const box = element.getBoundingClientRect();
+  const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+  const describe = node => {
+    if (!node) return 'nothing';
+    const classes = typeof node.className === 'string' ? node.className.trim().split(/ +/).slice(0, 2) : [];
+    return node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') + classes.map(name => '.' + name).join('');
+  };
+  return {
+    visible: box.width > 0 && box.height > 0,
+    covered: !!top && top !== element && !element.contains(top),
+    on_top: describe(top),
+  };
+}
+"""
 
 # Identifies one bookable offer across separate page loads, where booking ids differ:
 # (outbound leg id, return leg id, provider code, price).
@@ -46,6 +69,7 @@ class _Pass:
     price_prediction: Optional[str]
     price_prediction_change: Optional[float]
     price_prediction_days: Optional[int]
+    truncated: bool = False  # a later page couldn't be loaded; holds the earlier pages only
 
 
 def pages_to_fetch(filtered_count: int, page_size: int, max_pages: int = MAX_PAGES_PER_PASS) -> Tuple[int, int]:
@@ -145,6 +169,7 @@ class KayakScraper(BaseScraper):
         self.headless = headless
         self.timeout_s = timeout_s
         self.max_pages = max_pages
+        self.truncated_searches = 0
         self.page_jitter_s = page_jitter_s
         self.pass_jitter_s = pass_jitter_s
         self._stealth = Stealth()
@@ -217,6 +242,8 @@ class KayakScraper(BaseScraper):
             )
             time.sleep(random.uniform(*self.pass_jitter_s))
             passes.append(self._run_pass(query, nonstop=True))
+        if any(p.truncated for p in passes):
+            self.truncated_searches += 1
 
         results = [
             replace(result, price_prediction=main.price_prediction,
@@ -262,13 +289,9 @@ class KayakScraper(BaseScraper):
             filtered_count = first.get("filteredCount") or 0
             total_pages, fetch = pages_to_fetch(filtered_count, first.get("pageSize") or DEFAULT_PAGE_SIZE,
                                                 self.max_pages)
-            payloads = [first]
-            for number in range(2, fetch + 1):
-                page.wait_for_timeout(random.uniform(*self.page_jitter_s) * 1000)
-                self._click_show_more(page, number, label)
-                payloads.append(self._wait_for_page(page, polls, number, label))
-                logger.debug("%s: loaded page %d of %d", label, number, fetch)
-            logger.info("%s: %d results across %d page(s), fetched %d", label, filtered_count, total_pages, fetch)
+            payloads, truncated = self._fetch_pages(page, polls, first, fetch, label)
+            logger.info("%s: %d results across %d page(s), fetched %d",
+                        label, filtered_count, total_pages, len(payloads))
 
             offers: List[Offer] = []
             booking_ids = set()
@@ -280,7 +303,8 @@ class KayakScraper(BaseScraper):
                         booking_ids.add(booking_id)
                     offers.append((key, result))
 
-            return _Pass(offers, filtered_count, total_pages, *self._price_prediction(first))
+            return _Pass(offers, filtered_count, total_pages, *self._price_prediction(first),
+                         truncated=truncated)
         finally:
             try:
                 context.close()
@@ -311,12 +335,78 @@ class KayakScraper(BaseScraper):
         if BOT_PAGE_MARKER in page.url:
             raise BotBlockedError(f"{label}: redirected to {page.url}")
 
+    def _fetch_pages(self, page, polls: Dict[int, List[dict]], first: dict, fetch: int,
+                     label: str) -> Tuple[List[dict], bool]:
+        """Load pages 2..fetch. Returns (payloads, truncated).
+
+        A later page that won't load ends the pass but keeps what is already in hand.
+        Results are price-sorted, so page 1 alone holds the cheapest fares -- the figure
+        the whole history exists to track -- and discarding it over a stuck button threw
+        away a good answer to chase a slightly fuller one. Failing on page 1 itself is
+        different and still raises: that is the site not answering at all.
+        """
+        payloads = [first]
+        for number in range(2, fetch + 1):
+            page.wait_for_timeout(random.uniform(*self.page_jitter_s) * 1000)
+            try:
+                self._click_show_more(page, number, label)
+                payloads.append(self._wait_for_page(page, polls, number, label))
+            except (PaginationError, SearchTimeoutError) as error:
+                logger.warning(
+                    "PAGINATION_PARTIAL %s: kept %d of %d page(s): %s", label, number - 1, fetch,
+                    redact.error(f"{type(error).__name__}: {error}"),
+                )
+                return payloads, True
+            logger.debug("%s: loaded page %d of %d", label, number, fetch)
+        return payloads, False
+
     def _click_show_more(self, page, number: int, label: str) -> None:
+        """Press "Show more results", from inside the page if an ordinary click can't.
+
+        An ordinary click waits for the button to be unobstructed, so a consent or
+        region dialog drawn over it makes the click time out even though the button
+        is there. Clicking it in the page's own script ignores whatever is on top.
+        """
+        button = page.get_by_text(SHOW_MORE_TEXT, exact=False).first
         try:
-            page.get_by_text(SHOW_MORE_TEXT, exact=False).first.click(timeout=self.timeout_s * 1000)
-        except PlaywrightTimeoutError as error:
+            button.click(timeout=CLICK_TIMEOUT_S * 1000)
+            return
+        except PlaywrightTimeoutError:
             self._raise_if_blocked(page, label)
-            raise PaginationError(f"{label}: couldn't click '{SHOW_MORE_TEXT}' to load page {number}") from error
+
+        facts = self._page_facts(page, button)
+        try:
+            if button.count():
+                button.evaluate("element => element.click()")
+                logger.warning("%s: ordinary click failed for page %d, clicked in-page instead (%s)",
+                               label, number, facts)
+                return
+        except PlaywrightError:
+            logger.debug("%s: in-page click failed too", label, exc_info=True)
+        raise PaginationError(
+            f"{label}: couldn't click '{SHOW_MORE_TEXT}' to load page {number} ({facts})"
+        )
+
+    @staticmethod
+    def _page_facts(page, button) -> str:
+        """Why the button couldn't be clicked, in terms safe for a public log.
+
+        Host and language say whether a regional site was served; the match count
+        says whether the button exists under that wording; and the element drawn on
+        top says what was in the way. No URL path, no page text.
+        """
+        facts = []
+        try:
+            facts.append("host=" + (page.url.split("/")[2] if "//" in page.url else "unknown"))
+            facts.append("lang=" + str(page.evaluate("document.documentElement.lang") or "unset"))
+            matches = button.count()
+            facts.append(f"matches={matches}")
+            if matches:
+                detail = button.evaluate(_BUTTON_FACTS_JS)
+                facts.append(f"visible={detail['visible']} covered={detail['covered']} on_top={detail['on_top']}")
+        except Exception:  # diagnostics must never be the thing that fails the search
+            facts.append("facts unavailable")
+        return " ".join(facts)
 
     def _leg_detail(self, leg: dict, segments_lookup: dict, airlines_lookup: dict):
         """Airline, codeshare operator, equipment, layover, airport-change and endpoint detail for one leg.
