@@ -149,6 +149,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     runlog = sub.add_parser("runlog", help="Append counts-only run summaries to a CSV log")
     runlog.add_argument("--summaries", required=True, help="Directory of summary JSON files to fold in")
     runlog.add_argument("--out", default="run-log.csv", help="CSV log to append to (created if absent)")
+    runlog.add_argument("--expected-count", dest="expected_count", type=int, default=0,
+                        help="Shards this run planned; any that left no summary get a NotRun row")
+    runlog.add_argument("--run-id-base", dest="run_id_base", default="",
+                        help="Run id that shard run ids are built from (with --expected-count)")
+    runlog.add_argument("--run-date", dest="run_date", default="",
+                        help="Date to record against NotRun rows (with --expected-count)")
 
     plan = sub.add_parser("plan", help="Print what a route spec would run today, without scraping")
     add_source_arguments(plan)
@@ -252,47 +258,63 @@ def _track_exit_code(report, tolerated: int) -> int:
     return 0
 
 
+NOT_RUN = "NotRun"
+
+
+def _runlog_key(row: dict) -> tuple:
+    return str(row.get("run_date", "")), str(row.get("run_id", "")), str(row.get("shard", ""))
+
+
 def run_runlog(args: argparse.Namespace) -> int:
     """Fold each shard's summary into one CSV. Committing it is also what keeps the
-    repository from looking idle, which would have GitHub disable the schedule."""
-    summaries = sorted(Path(args.summaries).glob("**/*.json"))
-    if not summaries:
+    repository from looking idle, which would have GitHub disable the schedule.
+
+    With --expected-count, a planned shard that left no summary gets a NotRun row.
+    Otherwise a shard GitHub never started -- "not acquired by Runner" -- simply
+    doesn't appear, and a day missing a sixth of its searches looks complete.
+    A shard re-run later replaces its own NotRun row.
+    """
+    incoming = [json.loads(path.read_text(encoding="utf-8"))
+                for path in sorted(Path(args.summaries).glob("**/*.json"))]
+    if args.expected_count:
+        reported = {str(row.get("shard", "")) for row in incoming}
+        for index in range(args.expected_count):
+            shard = f"{index}/{args.expected_count}"
+            if shard not in reported:
+                logger.error("SHARD_NOT_RUN: shard %s left no summary", shard)
+                incoming.append({"run_date": args.run_date, "run_id": f"{args.run_id_base}-shard{index}",
+                                 "shard": shard, "error_types": NOT_RUN})
+    if not incoming:
         logger.error("no summary files under %s", args.summaries)
         return 2
-    out = Path(args.out)
-    has_rows = out.exists() and out.stat().st_size > 0
-    # Keyed so re-running the log job doesn't double-enter a run that is already there.
-    seen = set()
-    if has_rows:
-        with out.open(newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            existing = list(reader)
-            header = tuple(reader.fieldnames or ())
-        seen = {(row["run_date"], row["run_id"], row["shard"]) for row in existing}
-        if header != RUN_LOG_FIELDS:
-            # The log gained a column since this file was started. Rewrite it under the
-            # current header, or every appended row would sit one column out of line.
-            with out.open("w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=RUN_LOG_FIELDS, extrasaction="ignore")
-                writer.writeheader()
-                for row in existing:
-                    writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
-            logger.info("upgraded %s to the current columns", out)
 
-    appended = 0
-    with out.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=RUN_LOG_FIELDS, extrasaction="ignore")
-        if not has_rows:
-            writer.writeheader()
-        for path in summaries:
-            row = json.loads(path.read_text(encoding="utf-8"))
-            key = (str(row.get("run_date", "")), str(row.get("run_id", "")), str(row.get("shard", "")))
-            if key in seen:
-                continue
-            seen.add(key)
-            writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
+    out = Path(args.out)
+    existing: List[dict] = []
+    if out.exists() and out.stat().st_size > 0:
+        with out.open(newline="", encoding="utf-8") as handle:
+            existing = list(csv.DictReader(handle))
+
+    # Keyed so re-running the log job doesn't double-enter a run that is already there.
+    position = {_runlog_key(row): index for index, row in enumerate(existing)}
+    appended = replaced = 0
+    for row in incoming:
+        key = _runlog_key(row)
+        if key not in position:
+            position[key] = len(existing)
+            existing.append(row)
             appended += 1
-    logger.info("appended %d of %d run(s) to %s", appended, len(summaries), out)
+        elif existing[position[key]].get("error_types") == NOT_RUN and row.get("error_types") != NOT_RUN:
+            existing[position[key]] = row
+            replaced += 1
+
+    # Always rewritten whole: it is small, and this also moves an older file onto the
+    # current columns rather than appending rows that sit one column out of line.
+    with out.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RUN_LOG_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        for row in existing:
+            writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
+    logger.info("appended %d and replaced %d of %d run(s) in %s", appended, replaced, len(incoming), out)
     return 0
 
 
