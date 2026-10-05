@@ -142,7 +142,7 @@ jobs:
   # public repo after 60 days with no repository activity, and workflow runs are not
   # activity -- only commits are. Without this the tracker goes quiet with no warning.
   log:
-    needs: track
+    needs: [plan, track]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -174,8 +174,14 @@ jobs:
           merge-multiple: true
           path: summaries
 
+      # --expected-count gives any planned shard that left no summary a NotRun row --
+      # GitHub occasionally never starts a queued job, and without this the day's log
+      # would just be one shard shorter and look complete.
       - name: Append them to the run log
-        run: python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv
+        run: |
+          python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv \
+            --expected-count "${{ needs.plan.outputs.count }}" \
+            --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}"
 
       - name: Commit the run log
         run: |

@@ -103,3 +103,48 @@ def test_runlog_reports_an_empty_directory(tmp_path, caplog):
 def test_every_logged_field_comes_from_summarize(field):
     summary = cli.summarize(BatchReport(), [], summary_args(), 0, 0.0, "2026-09-19")
     assert field in summary
+
+
+def test_a_shard_that_never_ran_is_recorded_as_such(tmp_path):
+    """GitHub sometimes never starts a queued job ("not acquired by Runner"). Without a
+    row for it, a day missing a sixth of its searches reads as complete."""
+    write_summaries(tmp_path / "day", [
+        {"run_date": "2026-10-05", "run_id": "9-shard0", "shard": "0/3", "searches": 68, "rows": 10},
+        {"run_date": "2026-10-05", "run_id": "9-shard1", "shard": "1/3", "searches": 68, "rows": 10},
+    ])
+    out = tmp_path / "run-log.csv"
+    assert cli.main(["runlog", "--summaries", str(tmp_path / "day"), "--out", str(out),
+                     "--expected-count", "3", "--run-id-base", "9", "--run-date", "2026-10-05"]) == 0
+    rows = read_log(out)
+    assert [row["shard"] for row in rows] == ["0/3", "1/3", "2/3"]
+    assert rows[2]["error_types"] == "NotRun" and rows[2]["run_id"] == "9-shard2"
+    assert rows[2]["rows"] == ""
+
+
+def test_a_rerun_shard_replaces_its_not_run_row(tmp_path):
+    out = tmp_path / "run-log.csv"
+    write_summaries(tmp_path / "first", [
+        {"run_date": "2026-10-05", "run_id": "9-shard0", "shard": "0/2", "rows": 10},
+    ])
+    cli.main(["runlog", "--summaries", str(tmp_path / "first"), "--out", str(out),
+              "--expected-count", "2", "--run-id-base", "9", "--run-date", "2026-10-05"])
+    write_summaries(tmp_path / "rerun", [
+        {"run_date": "2026-10-05", "run_id": "9-shard0", "shard": "0/2", "rows": 10},
+        {"run_date": "2026-10-05", "run_id": "9-shard1", "shard": "1/2", "rows": 25},
+    ])
+    cli.main(["runlog", "--summaries", str(tmp_path / "rerun"), "--out", str(out),
+              "--expected-count", "2", "--run-id-base", "9", "--run-date", "2026-10-05"])
+    rows = read_log(out)
+    assert len(rows) == 2
+    assert rows[1]["error_types"] == "" and rows[1]["rows"] == "25"
+
+
+def test_a_real_row_is_never_overwritten_by_a_not_run_placeholder(tmp_path):
+    out = tmp_path / "run-log.csv"
+    write_summaries(tmp_path / "day", [{"run_date": "2026-10-05", "run_id": "9-shard0", "shard": "0/1", "rows": 7}])
+    cli.main(["runlog", "--summaries", str(tmp_path / "day"), "--out", str(out)])
+    (tmp_path / "empty").mkdir()
+    cli.main(["runlog", "--summaries", str(tmp_path / "empty"), "--out", str(out),
+              "--expected-count", "1", "--run-id-base", "9", "--run-date", "2026-10-05"])
+    rows = read_log(out)
+    assert len(rows) == 1 and rows[0]["rows"] == "7" and rows[0]["error_types"] == ""
