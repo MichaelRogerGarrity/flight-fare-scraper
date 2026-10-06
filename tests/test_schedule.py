@@ -51,7 +51,8 @@ def test_base_weekends_are_fridays_inside_the_horizon():
 
 def test_nine_combinations_per_weekend_in_the_near_tier():
     # 20 days out -> daily tier, three departure offsets by three return offsets.
-    queries = schedule.due_today(spec(), FRIDAY - timedelta(days=20))
+    # min_nights=0 keeps the same-day combination, so the full grid is visible.
+    queries = schedule.due_today(spec(min_nights=0), FRIDAY - timedelta(days=20))
     for_this_weekend = [
         query for query in queries
         if abs((query.depart_date - FRIDAY).days) <= 1
@@ -188,3 +189,21 @@ def test_shards_needed_keeps_every_shard_under_the_limit(total, limit, expected)
 def test_shards_needed_rejects_a_zero_limit():
     with pytest.raises(ValueError):
         schedule.shards_needed(10, 0)
+
+
+def test_same_day_round_trips_are_not_searched_by_default():
+    """A 2-night weekend with a day of slack at each end includes leaving a day late and
+    returning a day early -- a same-day turnaround, not a trip anyone means."""
+    queries = schedule.due_today(spec(), FRIDAY - timedelta(days=10))
+    assert queries
+    assert all((q.return_date - q.depart_date).days >= 1 for q in queries)
+    near = [q for q in queries if abs((q.depart_date - FRIDAY).days) <= 1]
+    assert len(near) == 8  # nine combinations less the same-day one
+
+
+def test_min_nights_can_be_raised_or_lowered():
+    stays = lambda parsed: {(q.return_date - q.depart_date).days
+                            for q in schedule.due_today(parsed, FRIDAY - timedelta(days=10))
+                            if abs((q.depart_date - FRIDAY).days) <= 1}
+    assert stays(spec(min_nights=0)) == {0, 1, 2, 3, 4}
+    assert stays(spec(min_nights=2)) == {2, 3, 4}

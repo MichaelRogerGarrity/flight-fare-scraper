@@ -51,6 +51,11 @@ class Spec:
     base_weekday: int = FRIDAY
     horizon_days: int = DEFAULT_HORIZON_DAYS
     min_days_out: int = 1
+    # Shortest stay searched. The day offsets apply to both ends of a trip, so a
+    # 2-night weekend with +/-1 day of slack also produces a same-day turnaround
+    # (leave a day late, return a day early) -- about a tenth of a short route's
+    # searches, spent on trips nobody takes as a weekend away.
+    min_nights: int = 1
 
 
 def _require(mapping: Dict[str, Any], key: str, where: str) -> Any:
@@ -120,6 +125,7 @@ def parse_spec(text: str) -> Spec:
         base_weekday=int(raw.get("base_weekday", FRIDAY)),
         horizon_days=int(raw.get("horizon_days", DEFAULT_HORIZON_DAYS)),
         min_days_out=int(raw.get("min_days_out", 1)),
+        min_nights=int(raw.get("min_nights", 1)),
     )
 
 
@@ -173,7 +179,7 @@ def due_today(spec: Spec, today: date) -> List[SearchQuery]:
                     continue
                 for return_offset in tier.day_offsets:
                     returns = weekend + timedelta(days=route.nights + return_offset)
-                    if returns < depart:
+                    if (returns - depart).days < spec.min_nights:
                         continue
                     queries.append(build_query(
                         route.origin, route.destination,
