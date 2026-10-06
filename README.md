@@ -68,6 +68,11 @@ combinations), far dates weekly with just the base weekend. Because "due" is a f
 how far out a departure is, a missed run costs nothing: that weekend simply waits for its
 next turn.
 
+Because the slack applies to both ends, a short trip's grid includes stays shorter than
+intended -- a 2-night weekend can come out as leaving a day late and returning a day
+early, the same day. `min_nights` (default 1) drops anything shorter, so same-day round
+trips are never searched.
+
 See [examples/routes.spec.example.json](examples/routes.spec.example.json) for the shape.
 Check what a spec would do before running it:
 
