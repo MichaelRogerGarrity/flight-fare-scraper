@@ -151,6 +151,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # The latest main, not the commit this run started from. A re-run checks
+          # out the run's original commit by default, which predates the run log the
+          # first attempt already pushed -- appending onto that stale copy conflicts.
+          ref: main
           # A personal access token makes this an ordinary push. GitHub has never
           # documented whether a GITHUB_TOKEN commit resets the idle timer -- the
           # bot-commit trick is community lore, not a guarantee -- so set
@@ -177,25 +181,28 @@ jobs:
       # --expected-count gives any planned shard that left no summary a NotRun row --
       # GitHub occasionally never starts a queued job, and without this the day's log
       # would just be one shard shorter and look complete.
-      - name: Append them to the run log
-        run: |
-          python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv \
-            --expected-count "${{ needs.plan.outputs.count }}" \
-            --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}"
-
-      - name: Commit the run log
+      #
+      # If the push is rejected because main moved, this rebuilds the log on the new
+      # main rather than rebasing: two runs appending to the end of the same CSV
+      # conflict on every rebase, while runlog is idempotent, so running it again on
+      # the latest file adds exactly what is still missing.
+      - name: Append to the run log and commit it
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add run-log.csv
-          if git diff --staged --quiet; then
-            echo "run log unchanged"
-            exit 0
-          fi
-          git commit -m "Log fare tracking run ${{ github.run_id }}"
           for attempt in 1 2 3; do
-            if git push; then exit 0; fi
-            echo "push rejected, rebasing (attempt $attempt)"
-            git pull --rebase
+            python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv \
+              --expected-count "${{ needs.plan.outputs.count }}" \
+              --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}"
+            git add run-log.csv
+            if git diff --staged --quiet; then
+              echo "run log unchanged"
+              exit 0
+            fi
+            git commit -q -m "Log fare tracking run ${{ github.run_id }}"
+            if git push origin HEAD:main; then exit 0; fi
+            echo "push rejected (attempt $attempt); rebuilding the log on the latest main"
+            git fetch -q origin main
+            git reset -q --hard origin/main
           done
           exit 1
