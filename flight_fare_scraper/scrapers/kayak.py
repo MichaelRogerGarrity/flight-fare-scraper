@@ -170,6 +170,7 @@ class KayakScraper(BaseScraper):
         self.timeout_s = timeout_s
         self.max_pages = max_pages
         self.truncated_searches = 0
+        self.in_page_clicks = 0
         self.page_jitter_s = page_jitter_s
         self.pass_jitter_s = pass_jitter_s
         self._stealth = Stealth()
@@ -366,26 +367,44 @@ class KayakScraper(BaseScraper):
         An ordinary click waits for the button to be unobstructed, so a consent or
         region dialog drawn over it makes the click time out even though the button
         is there. Clicking it in the page's own script ignores whatever is on top.
+
+        When something is already known to be covering the button, the ordinary click
+        is skipped: it could only wait out CLICK_TIMEOUT_S, and on a runner that gets
+        the overlay that was 15 seconds on every page of every search -- about 45
+        minutes a shard. If the check is wrong either way the fallback still catches it.
         """
         button = page.get_by_text(SHOW_MORE_TEXT, exact=False).first
-        try:
-            button.click(timeout=CLICK_TIMEOUT_S * 1000)
-            return
-        except PlaywrightTimeoutError:
-            self._raise_if_blocked(page, label)
+        if not self._covered(button):
+            try:
+                button.click(timeout=CLICK_TIMEOUT_S * 1000)
+                return
+            except PlaywrightTimeoutError:
+                self._raise_if_blocked(page, label)
 
         facts = self._page_facts(page, button)
         try:
             if button.count():
                 button.evaluate("element => element.click()")
-                logger.warning("%s: ordinary click failed for page %d, clicked in-page instead (%s)",
-                               label, number, facts)
+                self.in_page_clicks += 1
+                # Once per scraper is enough: an overlay that is there once is there on
+                # every page that follows, and a warning per click buried the log.
+                log = logger.warning if self.in_page_clicks == 1 else logger.debug
+                log("%s: button covered or unclickable on page %d, clicked in-page instead (%s)",
+                    label, number, facts)
                 return
         except PlaywrightError:
             logger.debug("%s: in-page click failed too", label, exc_info=True)
         raise PaginationError(
             f"{label}: couldn't click '{SHOW_MORE_TEXT}' to load page {number} ({facts})"
         )
+
+    @staticmethod
+    def _covered(button) -> bool:
+        """Whether another element is drawn over the button's centre right now."""
+        try:
+            return bool(button.count()) and bool(button.evaluate(_BUTTON_FACTS_JS)["covered"])
+        except PlaywrightError:
+            return False
 
     @staticmethod
     def _page_facts(page, button) -> str:

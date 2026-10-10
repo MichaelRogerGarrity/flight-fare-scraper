@@ -36,8 +36,10 @@ class FakeButton:
         self.click_times_out = click_times_out
         self.covered = covered
         self.in_page_clicks = 0
+        self.ordinary_clicks = 0
 
     def click(self, timeout):
+        self.ordinary_clicks += 1
         if self.click_times_out:
             raise PlaywrightTimeoutError("click timed out")
 
@@ -65,19 +67,42 @@ def scraper_with(button):
 # --- the click itself ---------------------------------------------------------------
 
 def test_an_ordinary_click_that_works_needs_no_fallback():
-    button = FakeButton(click_times_out=False)
+    button = FakeButton(click_times_out=False, covered=False)
     scraper, page = scraper_with(button)
     scraper._click_show_more(page, 2, "route-x")
     assert button.in_page_clicks == 0
 
 
-def test_a_covered_button_is_clicked_from_inside_the_page():
+def test_a_covered_button_is_clicked_from_inside_the_page_without_waiting():
     """An ordinary click waits for the button to be unobstructed, so a dialog drawn
-    over it times the click out even though the button is right there."""
+    over it could only time out. Skipping it saved ~45 minutes a shard on runners
+    that get the overlay on every page."""
     button = FakeButton(click_times_out=True, covered=True)
     scraper, page = scraper_with(button)
     scraper._click_show_more(page, 2, "route-x")
     assert button.in_page_clicks == 1
+    assert button.ordinary_clicks == 0
+    assert scraper.in_page_clicks == 1
+
+
+def test_an_unclickable_button_that_looks_uncovered_still_falls_back():
+    # The covered check is a guess; when it misses, the old path still recovers.
+    button = FakeButton(click_times_out=True, covered=False)
+    scraper, page = scraper_with(button)
+    scraper._click_show_more(page, 2, "route-x")
+    assert button.ordinary_clicks == 1 and button.in_page_clicks == 1
+
+
+def test_only_the_first_in_page_click_warns(caplog):
+    import logging
+    button = FakeButton(click_times_out=True, covered=True)
+    scraper, page = scraper_with(button)
+    with caplog.at_level(logging.DEBUG, logger="flight_fare_scraper"):
+        for number in range(2, 6):
+            scraper._click_show_more(page, number, "route-x")
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "in-page" in r.getMessage()]
+    assert len(warnings) == 1
+    assert scraper.in_page_clicks == 4
 
 
 def test_a_missing_button_raises_with_facts_about_the_page():
