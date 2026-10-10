@@ -92,3 +92,19 @@ def test_null_rates_flag_a_column_that_went_empty(con):
 
 def test_report_fails_on_an_empty_table(con):
     assert audit.report(con, "fares") is False
+
+
+def test_a_fifteen_hour_clock_gap_is_real(con):
+    """A city on winter time 15 hours behind its destination: an 11:00 departure taking
+    780 minutes lands at 15:00 the next day local, a wall-clock gap of 1,680 minutes.
+    The old 14-hour bound flagged nearly a million correct rows like this."""
+    insert(con, outbound_depart="2026-12-04 11:00:00", outbound_arrive="2026-12-05 15:00:00",
+           outbound_duration_min=780)
+    assert counts(con)["timestamps disagree with duration"] == 0
+
+
+def test_a_gap_no_two_time_zones_can_have_is_still_caught(con):
+    # 27 hours apart: beyond UTC-12 to UTC+14, so the timestamps or duration are wrong.
+    insert(con, outbound_depart="2026-12-04 11:00:00", outbound_arrive="2026-12-05 15:00:00",
+           outbound_duration_min=1680 + 27 * 60)
+    assert counts(con)["timestamps disagree with duration"] == 1
