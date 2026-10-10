@@ -10,7 +10,7 @@ ids, never as airport codes, so this can run in Actions against the real bucket.
 """
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import duckdb
@@ -162,10 +162,58 @@ def anomalies(con: duckdb.DuckDBPyConnection, table: str) -> List[Tuple[str, int
     return out
 
 
+def coverage_report(con: duckdb.DuckDBPyConnection, table: str, spec: schedule.Spec,
+                    snapshot_dates: List[date], coverage_since: Optional[date] = None,
+                    coverage_days: Optional[int] = None) -> bool:
+    """Check recent snapshots against the searches the schedule expected. True if none
+    came up seriously short."""
+    clean = True
+    window_start = (max(snapshot_dates) - timedelta(days=coverage_days - 1)
+                    if coverage_days and snapshot_dates else None)
+    logger.info("== coverage against the schedule%s ==",
+                f" (last {coverage_days} days)" if coverage_days else "")
+    for snapshot_date in snapshot_dates:
+        if window_start and snapshot_date < window_start:
+            continue  # checked by an earlier audit; not repeated, not alarmed on again
+        # Coverage compares a past snapshot against today's schedule, so a snapshot
+        # taken under an earlier spec or an earlier version of the scheduler will
+        # look short through no fault of the run. coverage_since marks when the
+        # current schedule took effect.
+        if coverage_since and snapshot_date < coverage_since:
+            logger.info("  %s  skipped (predates the current schedule)", snapshot_date)
+            continue
+        expected, found, missing = coverage(con, table, spec, snapshot_date)
+        if missing:
+            # A search that ran fine can still yield nothing: airlines publish
+            # schedules roughly 330 days out, and a nonstop-only search on a date
+            # with no nonstop returns an empty result set. Only a large shortfall
+            # means something actually broke.
+            serious = len(missing) > max(2, round(expected * MISSING_TOLERANCE))
+            log = logger.error if serious else logger.warning
+            clean = clean and not serious
+            log("  %s  expected %d, found %d, %d absent%s", snapshot_date, expected, found,
+                len(missing), " -- ABOVE TOLERANCE" if serious else " (may be genuinely empty)")
+            for site, origin, destination, depart, returns in missing[:5]:
+                log("    absent: %s depart %s (%dd out) return %s",
+                    redact.route_id(_Stub(site, origin, destination, depart, returns)),
+                    depart, (depart - snapshot_date).days, returns)
+        else:
+            extra = found - expected
+            logger.info("  %s  expected %d, found %d%s", snapshot_date, expected, found,
+                        f" (+{extra} carried from an earlier spec)" if extra > 0 else "")
+    return clean
+
+
 def report(con: duckdb.DuckDBPyConnection, table: str,
            spec: Optional[schedule.Spec] = None,
-           coverage_since: Optional[date] = None) -> bool:
-    """Print the report. Returns True if nothing looked wrong."""
+           coverage_since: Optional[date] = None,
+           coverage_days: Optional[int] = None) -> bool:
+    """Print the report. Returns True if nothing looked wrong.
+
+    coverage_days limits the coverage check to the most recent snapshots. A day that
+    came up short stays short forever, so checking all history fails every audit
+    once one bad day exists -- and an alert that always fires stops being read.
+    """
     clean = True
     rows = snapshots(con, table)
     if not rows:
@@ -179,34 +227,8 @@ def report(con: duckdb.DuckDBPyConnection, table: str,
                     snapshot_date, count, searches, departures, horizon)
 
     if spec is not None:
-        logger.info("== coverage against the schedule ==")
-        for snapshot_date, *_ in rows:
-            # Coverage compares a past snapshot against today's schedule, so a snapshot
-            # taken under an earlier spec or an earlier version of the scheduler will
-            # look short through no fault of the run. coverage_since marks when the
-            # current schedule took effect.
-            if coverage_since and snapshot_date < coverage_since:
-                logger.info("  %s  skipped (predates the current schedule)", snapshot_date)
-                continue
-            expected, found, missing = coverage(con, table, spec, snapshot_date)
-            if missing:
-                # A search that ran fine can still yield nothing: airlines publish
-                # schedules roughly 330 days out, and a nonstop-only search on a date
-                # with no nonstop returns an empty result set. Only a large shortfall
-                # means something actually broke.
-                serious = len(missing) > max(2, round(expected * MISSING_TOLERANCE))
-                log = logger.error if serious else logger.warning
-                clean = clean and not serious
-                log("  %s  expected %d, found %d, %d absent%s", snapshot_date, expected, found,
-                    len(missing), " -- ABOVE TOLERANCE" if serious else " (may be genuinely empty)")
-                for site, origin, destination, depart, returns in missing[:5]:
-                    log("    absent: %s depart %s (%dd out) return %s",
-                        redact.route_id(_Stub(site, origin, destination, depart, returns)),
-                        depart, (depart - snapshot_date).days, returns)
-            else:
-                extra = found - expected
-                logger.info("  %s  expected %d, found %d%s", snapshot_date, expected, found,
-                            f" (+{extra} carried from an earlier spec)" if extra > 0 else "")
+        clean = coverage_report(con, table, spec, [row[0] for row in rows],
+                                coverage_since, coverage_days) and clean
 
     logger.info("== column completeness (latest snapshot) ==")
     for name in sorted(set(COLUMNS) - set(present_columns(con, table))):
