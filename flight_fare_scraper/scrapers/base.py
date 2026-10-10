@@ -30,6 +30,8 @@ class BaseScraper(ABC):
     name: str
     # Searches that returned only their first pages because a later one wouldn't load.
     truncated_searches: int = 0
+    # Pages reached by clicking from inside the page because the button was covered.
+    in_page_clicks: int = 0
 
     def __enter__(self) -> "BaseScraper":
         return self

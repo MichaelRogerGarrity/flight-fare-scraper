@@ -32,6 +32,7 @@ class BatchReport:
     succeeded: List[SearchQuery] = field(default_factory=list)
     failures: List[SearchFailure] = field(default_factory=list)
     truncated: int = 0  # searches that succeeded with only their first pages
+    in_page_clicks: int = 0  # pages reached by clicking past something covering the button
 
 
 def _described(error: BaseException) -> str:
@@ -122,6 +123,7 @@ def run_queries(
                 report.succeeded.append(query)
         finally:
             report.truncated += getattr(scraper, "truncated_searches", 0)
+            report.in_page_clicks += getattr(scraper, "in_page_clicks", 0)
             scraper.__exit__(None, None, None)
 
     _log_summary(len(queries), report)
@@ -129,6 +131,9 @@ def run_queries(
 
 
 def _log_summary(total: int, report: BatchReport) -> None:
+    if report.in_page_clicks:
+        logger.info("%d page(s) loaded by clicking past something covering the button",
+                    report.in_page_clicks)
     if report.truncated:
         logger.warning("PARTIAL_RESULTS: %d of %d searches kept only their first pages "
                        "because a later page wouldn't load", report.truncated, total)
