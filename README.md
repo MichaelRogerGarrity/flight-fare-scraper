@@ -169,6 +169,14 @@ python -c "import json; print(json.dumps(json.load(open('routes.spec.json')), se
 Any S3-compatible store works — the endpoint just has to be given without a scheme.
 DuckDB's `httpfs` extension does the reading and writing, so there is no extra dependency.
 
+### The weekly audit
+
+`.github/workflows/audit.yml` reads the published objects in place every Tuesday and
+reports coverage against the schedule, columns gone empty on the latest snapshot, and
+implausible prices, durations and timestamps. It checks coverage over the last 7 days
+only: a short day stays short forever, so checking all history would fail every audit
+after one bad day. With a weekly audit, a 7-day window checks each day exactly once.
+
 ## Keeping the public log clean
 
 This repo is public; its Actions logs are too. Two things keep routes out of them:

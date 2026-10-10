@@ -108,3 +108,39 @@ def test_a_gap_no_two_time_zones_can_have_is_still_caught(con):
     insert(con, outbound_depart="2026-12-04 11:00:00", outbound_arrive="2026-12-05 15:00:00",
            outbound_duration_min=1680 + 27 * 60)
     assert counts(con)["timestamps disagree with duration"] == 1
+
+
+def _fill(con, spec_obj, snapshot, keep=1.0):
+    """Insert one row for (a share of) the searches the spec expected on `snapshot`."""
+    from flight_fare_scraper import schedule as _schedule
+    due = _schedule.due_today(spec_obj, snapshot)
+    for query in due[: max(1, int(len(due) * keep))]:
+        insert(con, snapshot_date=snapshot, depart_date=query.depart_date, return_date=query.return_date,
+               origin=query.origin, destination=query.destination,
+               outbound_from="MIA", outbound_to="NRT", return_from="NRT", return_to="MIA")
+
+
+def _spec():
+    import json
+    from flight_fare_scraper import schedule as _schedule
+    return _schedule.parse_spec(json.dumps(
+        {"routes": [{"origin": "MIA", "destination": "TYO", "nights": 16, "nonstop": False}]}))
+
+
+def test_a_short_day_outside_the_rolling_window_no_longer_fails_the_audit(con):
+    """A short day stays short forever. Checking all history failed every weekly audit
+    after one bad day; a window matched to the audit's cadence checks each day once."""
+    spec_obj = _spec()
+    _fill(con, spec_obj, date(2026, 10, 1), keep=0.1)   # badly short, two weeks back
+    _fill(con, spec_obj, date(2026, 10, 15))            # complete, latest
+    days = [date(2026, 10, 1), date(2026, 10, 15)]
+    assert audit.coverage_report(con, "fares", spec_obj, days) is False
+    assert audit.coverage_report(con, "fares", spec_obj, days, coverage_days=7) is True
+
+
+def test_a_short_day_inside_the_window_still_fails_it(con):
+    spec_obj = _spec()
+    _fill(con, spec_obj, date(2026, 10, 12), keep=0.1)  # short, three days back
+    _fill(con, spec_obj, date(2026, 10, 15))
+    days = [date(2026, 10, 12), date(2026, 10, 15)]
+    assert audit.coverage_report(con, "fares", spec_obj, days, coverage_days=7) is False

@@ -176,6 +176,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--coverage-since", dest="coverage_since",
                               help="Only check coverage for snapshots on or after this YYYY-MM-DD. "
                                    "Earlier ones ran under a different schedule and would look short.")
+    audit_parser.add_argument("--coverage-days", dest="coverage_days", type=int, default=0,
+                              help="Only check coverage for the most recent N days of snapshots. Match it "
+                                   "to how often the audit runs, so each day is checked once and a known "
+                                   "short day doesn't fail every audit after it.")
     audit_parser.add_argument("--log-file", default="", help=LOG_FILE_HELP)
     audit_parser.add_argument("--verbose", action="store_true", help="Show debug-level logs")
 
@@ -371,7 +375,7 @@ def run_audit(args: argparse.Namespace) -> int:
             table = "fares"
         since = (datetime.strptime(args.coverage_since, "%Y-%m-%d").date()
                  if args.coverage_since else None)
-        return 0 if audit.report(con, table, spec, since) else 1
+        return 0 if audit.report(con, table, spec, since, args.coverage_days or None) else 1
     finally:
         con.close()
 

@@ -44,4 +44,8 @@ jobs:
           # 2026-09-25 is the first snapshot under the current spec; earlier ones would
           # be judged against routes they never had.
           # Move this forward whenever FFS_ROUTES gains a route.
-          python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES --coverage-since 2026-09-25
+          # --coverage-days 7 matches the weekly schedule: each day's coverage is checked
+          # by exactly one audit, so a day that came up short is reported once, not by
+          # every audit after it.
+          python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES \
+            --coverage-since 2026-09-25 --coverage-days 7
