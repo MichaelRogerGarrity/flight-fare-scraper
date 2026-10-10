@@ -46,9 +46,14 @@ CONDITIONAL_COLUMNS = (
     "second_checked_bag_fee", "outbound_operated_by", "return_operated_by",
 )
 PLAUSIBLE_PRICE = (20.0, 20000.0)
+# The largest possible gap between two airports' clocks. Time zones run from UTC-12
+# to UTC+14, so two can be up to 26 hours apart. A 14-hour bound looked generous
+# for the first routes, then flagged nearly a million correct rows once a route ran
+# from a city on winter time 15 hours behind its destination.
+MAX_CLOCK_GAP_MIN = 26 * 60
 _OFFSET_CHECK = " OR ".join(
     f"(({leg}_duration_min - date_diff('minute', {leg}_depart, {leg}_arrive)) % 15 <> 0"
-    f" OR abs({leg}_duration_min - date_diff('minute', {leg}_depart, {leg}_arrive)) > 14 * 60)"
+    f" OR abs({leg}_duration_min - date_diff('minute', {leg}_depart, {leg}_arrive)) > {MAX_CLOCK_GAP_MIN})"
     for leg in ("outbound", "return")
 )
 PLAUSIBLE_DURATION_MIN = (30, 3000)  # half an hour to just over two days
@@ -142,7 +147,7 @@ def anomalies(con: duckdb.DuckDBPyConnection, table: str) -> List[Tuple[str, int
         # Not "arrive < depart": timestamps are local wall-clock, so an eastbound
         # transpacific leg legitimately lands earlier in the day than it took off.
         # What must hold is that duration minus the wall-clock gap is a real UTC
-        # offset difference -- a multiple of 15 minutes, within 14 hours.
+        # offset difference -- a multiple of 15 minutes, within MAX_CLOCK_GAP_MIN.
         "timestamps disagree with duration": _OFFSET_CHECK,
         "return departs before outbound arrives": "return_depart < outbound_arrive",
         "negative stops": "outbound_stops < 0 OR return_stops < 0",
