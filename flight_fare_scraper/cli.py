@@ -5,18 +5,19 @@ import logging
 import os
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import duckdb
+import pandas as pd
 
 from . import audit, db, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
-from .runner import run_queries
+from .runner import SEARCH_RECORD_TYPES, run_queries
 
 logger = logging.getLogger("flight_fare_scraper")
 
@@ -142,6 +143,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Still exit 0 if at most this many searches failed. A daily unattended "
                             "run shouldn't go red over one transient timeout. Any bot-block fails "
                             "regardless, since that is the signal worth reacting to.")
+    track.add_argument("--diagnostics", default="",
+                       help="Also write one record per search to this Parquet file. Holds real "
+                            "routes and error text: with --push it goes to the private bucket, never "
+                            "to a public log or artifact.")
     track.add_argument("--summary", default="",
                        help="Write a counts-only JSON summary of this run here. Safe to publish: "
                             "it holds no routes, prices or error messages.")
@@ -155,6 +160,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="Run id that shard run ids are built from (with --expected-count)")
     runlog.add_argument("--run-date", dest="run_date", default="",
                         help="Date to record against NotRun rows (with --expected-count)")
+    runlog.add_argument("--start-delay-min", dest="start_delay_min", default="",
+                        help="Minutes the run started after its scheduled time, recorded on each of its rows")
+    runlog.add_argument("--step-summary", dest="step_summary", default="",
+                        help="Also write this run's rows as a Markdown table here ($GITHUB_STEP_SUMMARY)")
 
     plan = sub.add_parser("plan", help="Print what a route spec would run today, without scraping")
     add_source_arguments(plan)
@@ -162,6 +171,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                       help="List each search. Prints real airport codes, so not for a public log.")
     plan.add_argument("--max-per-shard", dest="max_per_shard", type=int, default=0,
                       help="Size today's run into shards of at most this many searches each")
+    plan.add_argument("--cron", default="",
+                      help="The schedule that fired this run (github.event.schedule); with "
+                           "--matrix-output, records how many minutes late the run started")
     plan.add_argument("--matrix-output", dest="matrix_output", default="",
                       help="Append shards=[...], count=N and today=YYYY-MM-DD to this file, "
                            "in GitHub Actions output format ($GITHUB_OUTPUT)")
@@ -193,6 +205,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 RUN_LOG_FIELDS = (
     "run_date", "run_id", "shard", "searches", "succeeded", "failed",
     "bot_blocked", "rows", "max_pages", "seconds", "error_types", "partial",
+    "in_page_clicks", "start_delay_min",
 )
 
 
@@ -212,6 +225,7 @@ def summarize(report, queries: List[SearchQuery], args: argparse.Namespace,
         "failed": len(report.failures),
         "bot_blocked": sum(failure.bot_blocked for failure in report.failures),
         "partial": getattr(report, "truncated", 0),
+        "in_page_clicks": getattr(report, "in_page_clicks", 0),
         "rows": rows,
         "max_pages": args.max_pages if args.max_pages is not None else "",
         "seconds": round(seconds),
@@ -228,15 +242,16 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     recorded = 0  # bound before the try so the summary still gets written if recording fails
     try:
         moment = db.snapshot_now()
+        run_id = args.run_id or moment.strftime("%Y%m%dT%H%M%S")
         recorded = db.insert_snapshot(con, report.results, moment)
         logger.info("recorded %d rows into %s", recorded, args.db)
         if args.push and recorded:
             bucket = storage.require_env(storage.BUCKET_ENV)
             storage.configure(con)
-            run_id = args.run_id or moment.strftime("%Y%m%dT%H%M%S")
             storage.push_snapshot(
                 con, storage.uri(bucket, storage.snapshot_key(moment.date(), run_id)), moment.date()
             )
+        _write_diagnostics(con, report, args, moment.date(), run_id)
     finally:
         con.close()
         if args.summary:
@@ -246,6 +261,42 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
             Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
             logger.info("wrote run summary to %s", args.summary)
     return _track_exit_code(report, args.tolerate_failures)
+
+
+def _write_diagnostics(con, report, args: argparse.Namespace, snapshot: date, run_id: str) -> None:
+    """Save one row per search: to --diagnostics locally, and with --push to the bucket.
+
+    Published even when no fares were recorded -- a shard where every search failed is
+    exactly when this is needed. Never allowed to fail the run: the fares are already
+    saved by the time this runs, and losing diagnostics must not cost them. The rows
+    carry real routes and error text, so nothing about them reaches the console.
+    """
+    if not report.records or not (args.diagnostics or args.push):
+        return
+    try:
+        frame = pd.DataFrame(report.records)
+        frame.insert(0, "snapshot_date", snapshot)
+        frame.insert(1, "run_id", run_id)
+        frame.insert(2, "shard", args.shard or "1/1")
+        frame["days_out"] = [(depart - snapshot).days for depart in frame["depart_date"]]
+        con.register("ffs_diagnostics_frame", frame)
+        types = {"snapshot_date": "DATE", "run_id": "VARCHAR", "shard": "VARCHAR",
+                 **SEARCH_RECORD_TYPES, "days_out": "INTEGER"}
+        columns = ", ".join(f'CAST("{name}" AS {kind}) AS "{name}"' for name, kind in types.items())
+        con.execute(f"CREATE OR REPLACE TEMP TABLE ffs_diagnostics AS "
+                    f"SELECT {columns} FROM ffs_diagnostics_frame")
+        if args.diagnostics:
+            Path(args.diagnostics).parent.mkdir(parents=True, exist_ok=True)
+            con.execute(f"COPY ffs_diagnostics TO {storage._sql_literal(args.diagnostics)} (FORMAT PARQUET)")
+            logger.info("wrote %d search record(s) to %s", len(frame), args.diagnostics)
+        if args.push:
+            bucket = storage.require_env(storage.BUCKET_ENV)
+            storage.configure(con)
+            key = storage.snapshot_key(snapshot, run_id, prefix=storage.DIAGNOSTICS_PREFIX)
+            rows = storage.push_table(con, "ffs_diagnostics", storage.uri(bucket, key))
+            logger.info("published %d search record(s) to object storage", rows)
+    except Exception as error:  # diagnostics must never be what fails a run
+        logger.warning("DIAGNOSTICS_NOT_SAVED: %s", type(error).__name__)
 
 
 def _track_exit_code(report, tolerated: int) -> int:
@@ -302,6 +353,8 @@ def run_runlog(args: argparse.Namespace) -> int:
     position = {_runlog_key(row): index for index, row in enumerate(existing)}
     appended = replaced = 0
     for row in incoming:
+        if args.start_delay_min != "" and row.get("start_delay_min") in (None, ""):
+            row["start_delay_min"] = args.start_delay_min
         key = _runlog_key(row)
         if key not in position:
             position[key] = len(existing)
@@ -319,7 +372,73 @@ def run_runlog(args: argparse.Namespace) -> int:
         for row in existing:
             writer.writerow({field: row.get(field, "") for field in RUN_LOG_FIELDS})
     logger.info("appended %d and replaced %d of %d run(s) in %s", appended, replaced, len(incoming), out)
+    if args.step_summary:
+        this_run = [existing[position[_runlog_key(row)]] for row in incoming]
+        # Overwrite, not append: the log step re-runs runlog after a rejected push, and
+        # appending would show the table once per attempt. Each step gets a fresh file.
+        with open(args.step_summary, "w", encoding="utf-8") as handle:
+            handle.write(step_summary_markdown(this_run))
     return 0
+
+
+def _as_int(value) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def step_summary_markdown(rows: List[dict]) -> str:
+    """This run's shards as a table for the run's page on GitHub. Counts only, like the
+    run log itself: that page is public."""
+    lines = [
+        "### Fare tracking run",
+        "",
+        "| shard | searches | succeeded | failed | blocked | partial | in-page clicks | rows | minutes | errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in sorted(rows, key=lambda r: _as_int(str(r.get("shard", "")).split("/")[0])):
+        not_run = row.get("error_types") == NOT_RUN
+        lines.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            row.get("shard", ""),
+            *(["-"] * 8 if not_run else [
+                row.get("searches", ""), row.get("succeeded", ""), row.get("failed", ""),
+                row.get("bot_blocked", ""), row.get("partial", ""), row.get("in_page_clicks", ""),
+                row.get("rows", ""), round(_as_int(row.get("seconds")) / 60),
+            ]),
+            "**did not run**" if not_run else (row.get("error_types") or ""),
+        ))
+    searches = sum(_as_int(r.get("searches")) for r in rows)
+    succeeded = sum(_as_int(r.get("succeeded")) for r in rows)
+    not_run = sum(1 for r in rows if r.get("error_types") == NOT_RUN)
+    lines += [
+        "",
+        f"**{succeeded} of {searches} searches succeeded** across {len(rows) - not_run} of {len(rows)} shards"
+        f"{f', **{not_run} shard(s) did not run**' if not_run else ''}; "
+        f"{sum(_as_int(r.get('bot_blocked')) for r in rows)} bot-blocked, "
+        f"{sum(_as_int(r.get('partial')) for r in rows)} partial, "
+        f"{sum(_as_int(r.get('rows')) for r in rows):,} rows.",
+    ]
+    delay = next((r.get("start_delay_min") for r in rows if r.get("start_delay_min") not in (None, "")), None)
+    if delay is not None:
+        lines.append(f"Started {delay} minutes after its scheduled time.")
+    return "\n".join(lines) + "\n"
+
+
+def start_delay_minutes(cron: str, now: datetime) -> Optional[int]:
+    """Minutes between the most recent time `cron` should have fired and `now`.
+
+    Only the minute and hour fields are read, which is all a daily schedule uses.
+    GitHub fires scheduled runs late under load, sometimes by hours; recording it per
+    run turns that from something measured by hand into a column.
+    """
+    fields = (cron or "").split()
+    if len(fields) < 2 or not (fields[0].isdigit() and fields[1].isdigit()):
+        return None
+    scheduled = now.replace(hour=int(fields[1]), minute=int(fields[0]), second=0, microsecond=0)
+    if scheduled > now:
+        scheduled -= timedelta(days=1)
+    return int((now - scheduled).total_seconds() // 60)
 
 
 def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
@@ -335,6 +454,8 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                 handle.write(f"shards={json.dumps(list(range(count)))}\n")
                 handle.write(f"count={count}\n")
                 handle.write(f"today={today}\n")
+                delay = start_delay_minutes(args.cron, datetime.now(timezone.utc))
+                handle.write(f"start_delay={'' if delay is None else delay}\n")
     if args.show_routes:
         for query in queries:
             print(f"  {query.label}{'' if query.nonstop_only else '  (stops allowed)'}")

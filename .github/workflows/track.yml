@@ -46,6 +46,7 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       count: ${{ steps.plan.outputs.count }}
       today: ${{ steps.plan.outputs.today }}
+      start_delay: ${{ steps.plan.outputs.start_delay }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,13 +63,16 @@ jobs:
         env:
           FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
           TODAY: ${{ inputs.today }}
+          # Empty on a manual run; on a scheduled one, the cron that fired it, from
+          # which plan records how late the run actually started.
+          CRON: ${{ github.event.schedule }}
         run: |
           today_flag=""
           if [ -n "$TODAY" ]; then today_flag="--today $TODAY"; fi
           # 70 leaves a wide margin under the ~110-125 searches after which the site
           # stops answering one runner, even for a shard heavy with long-haul routes.
           python -m flight_fare_scraper.cli plan --spec-env FFS_ROUTES $today_flag \
-            --max-per-shard 70 --matrix-output "$GITHUB_OUTPUT"
+            --max-per-shard 70 --cron "$CRON" --matrix-output "$GITHUB_OUTPUT"
 
   track:
     needs: plan
@@ -193,7 +197,9 @@ jobs:
           for attempt in 1 2 3; do
             python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv \
               --expected-count "${{ needs.plan.outputs.count }}" \
-              --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}"
+              --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}" \
+              --start-delay-min "${{ needs.plan.outputs.start_delay }}" \
+              --step-summary "$GITHUB_STEP_SUMMARY"
             git add run-log.csv
             if git diff --staged --quiet; then
               echo "run log unchanged"

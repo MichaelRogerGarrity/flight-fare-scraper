@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Optional
 
 from ..models import FlightResult, SearchQuery
 
@@ -32,6 +32,9 @@ class BaseScraper(ABC):
     truncated_searches: int = 0
     # Pages reached by clicking from inside the page because the button was covered.
     in_page_clicks: int = 0
+    # Filled in while the most recent search runs, so a search that fails partway still
+    # says how far it got. Per pass: {"main": {...}, "nonstop": {...}} plus totals.
+    last_stats: Optional[dict] = None
 
     def __enter__(self) -> "BaseScraper":
         return self

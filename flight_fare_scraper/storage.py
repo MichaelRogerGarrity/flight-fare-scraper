@@ -28,6 +28,9 @@ BUCKET_ENV = "FFS_S3_BUCKET"
 REGION = "us-east-1"  # the Hugging Face gateway is single-region but still requires one
 
 SNAPSHOT_PREFIX = "snapshots"
+# Per-search records: real routes and full error text. Kept beside the fares in the
+# private bucket and never anywhere the public run can see.
+DIAGNOSTICS_PREFIX = "diagnostics"
 _SAFE_KEY_PART = re.compile(r"[^A-Za-z0-9._-]")
 
 
@@ -72,10 +75,11 @@ def configure(con: duckdb.DuckDBPyConnection) -> None:
     logger.debug("object storage configured for endpoint %s", endpoint)
 
 
-def snapshot_key(snapshot: date, run_id: str, shard: Optional[str] = None) -> str:
+def snapshot_key(snapshot: date, run_id: str, shard: Optional[str] = None,
+                 prefix: str = SNAPSHOT_PREFIX) -> str:
     """Hive-partitioned so a reader can prune by snapshot_date without opening files."""
     parts = [_SAFE_KEY_PART.sub("-", part) for part in (run_id, shard or "") if part]
-    return f"{SNAPSHOT_PREFIX}/snapshot_date={snapshot.isoformat()}/{'-'.join(parts)}.parquet"
+    return f"{prefix}/snapshot_date={snapshot.isoformat()}/{'-'.join(parts)}.parquet"
 
 
 def uri(bucket: str, key: str) -> str:
@@ -100,6 +104,14 @@ def push_snapshot(
     con.execute(f"COPY ffs_push TO {_sql_literal(destination)} (FORMAT PARQUET, COMPRESSION ZSTD)")
     con.execute("DROP TABLE ffs_push")
     logger.info("published %d rows to object storage", rows)
+    return rows
+
+
+def push_table(con: duckdb.DuckDBPyConnection, table: str, destination: str) -> int:
+    """Copy a whole table to `destination` as Parquet. Returns the row count written."""
+    (rows,) = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+    if rows:
+        con.execute(f"COPY {table} TO {_sql_literal(destination)} (FORMAT PARQUET, COMPRESSION ZSTD)")
     return rows
 
 

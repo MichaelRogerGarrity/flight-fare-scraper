@@ -99,7 +99,8 @@ def test_runlog_reports_an_empty_directory(tmp_path, caplog):
     assert cli.main(["runlog", "--summaries", str(tmp_path / "empty"), "--out", str(tmp_path / "log.csv")]) == 2
 
 
-@pytest.mark.parametrize("field", cli.RUN_LOG_FIELDS)
+# start_delay_min is known to the whole run, not to a shard, so the log step fills it in.
+@pytest.mark.parametrize("field", [f for f in cli.RUN_LOG_FIELDS if f != "start_delay_min"])
 def test_every_logged_field_comes_from_summarize(field):
     summary = cli.summarize(BatchReport(), [], summary_args(), 0, 0.0, "2026-09-19")
     assert field in summary
@@ -148,3 +149,45 @@ def test_a_real_row_is_never_overwritten_by_a_not_run_placeholder(tmp_path):
               "--expected-count", "1", "--run-id-base", "9", "--run-date", "2026-10-05"])
     rows = read_log(out)
     assert len(rows) == 1 and rows[0]["rows"] == "7" and rows[0]["error_types"] == ""
+
+
+def test_start_delay_is_recorded_on_every_row_of_the_run(tmp_path):
+    write_summaries(tmp_path / "day", [
+        {"run_date": "2026-10-13", "run_id": "9-shard0", "shard": "0/2", "searches": 67, "succeeded": 67},
+    ])
+    out = tmp_path / "run-log.csv"
+    cli.main(["runlog", "--summaries", str(tmp_path / "day"), "--out", str(out),
+              "--expected-count", "2", "--run-id-base", "9", "--run-date", "2026-10-13",
+              "--start-delay-min", "214"])
+    rows = read_log(out)
+    assert [row["start_delay_min"] for row in rows] == ["214", "214"]  # NotRun row too
+
+
+def test_step_summary_lists_this_runs_shards_and_flags_one_that_did_not_run(tmp_path):
+    write_summaries(tmp_path / "day", [
+        {"run_date": "2026-10-13", "run_id": "9-shard0", "shard": "0/2", "searches": 67, "succeeded": 66,
+         "failed": 1, "bot_blocked": 0, "partial": 0, "in_page_clicks": 12, "rows": 70000, "seconds": 4200,
+         "error_types": "SearchTimeoutError"},
+    ])
+    summary = tmp_path / "summary.md"
+    cli.main(["runlog", "--summaries", str(tmp_path / "day"), "--out", str(tmp_path / "log.csv"),
+              "--expected-count", "2", "--run-id-base", "9", "--run-date", "2026-10-13",
+              "--start-delay-min", "214", "--step-summary", str(summary)])
+    text = summary.read_text(encoding="utf-8")
+    assert "| 0/2 | 67 | 66 | 1 | 0 | 0 | 12 | 70000 | 70 | SearchTimeoutError |" in text
+    assert "| 1/2 |" in text and "did not run" in text
+    assert "66 of 67 searches succeeded" in text and "1 shard(s) did not run" in text
+    assert "214 minutes after its scheduled time" in text
+
+
+@pytest.mark.parametrize("cron, now, expected", [
+    ("37 5 * * *", "2026-10-13T11:19:00", 342),   # fired 5h42m late
+    ("37 5 * * *", "2026-10-13T05:37:30", 0),
+    ("37 5 * * *", "2026-10-14T01:00:00", 1163),  # so late it crossed midnight UTC
+    ("", "2026-10-13T11:19:00", None),            # a manual run has no schedule
+    ("*/5 * * * *", "2026-10-13T11:19:00", None),  # not a daily schedule
+])
+def test_start_delay_minutes(cron, now, expected):
+    from datetime import datetime, timezone
+    moment = datetime.fromisoformat(now).replace(tzinfo=timezone.utc)
+    assert cli.start_delay_minutes(cron, moment) == expected
