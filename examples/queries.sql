@@ -28,10 +28,10 @@ CREATE OR REPLACE SECRET hf (
 -- Everything ever published. snapshot_date lives in the rows as well as the key
 -- prefix, so hive_partitioning is unnecessary (and would collide with it).
 CREATE OR REPLACE VIEW published AS
-SELECT * FROM read_parquet('s3://FlightData/snapshots/**/*.parquet', union_by_name = true);
+SELECT * FROM read_parquet('s3://<bucket>/snapshots/**/*.parquet', union_by_name = true);
 
 -- One day only: naming the prefix skips every other object entirely.
-SELECT count(*) FROM read_parquet('s3://FlightData/snapshots/snapshot_date=2026-09-19/*.parquet');
+SELECT count(*) FROM read_parquet('s3://<bucket>/snapshots/snapshot_date=2026-09-19/*.parquet');
 
 
 ---------------------------------------------------------------------------
