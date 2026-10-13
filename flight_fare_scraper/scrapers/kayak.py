@@ -232,6 +232,7 @@ class KayakScraper(BaseScraper):
         if not self._browser.is_connected():
             raise ScraperError("browser process is no longer connected")
 
+        self.last_stats = {}
         main = self._run_pass(query, nonstop=False)
         passes = [main]
         if not query.nonstop_only and main.total_pages > self.max_pages:
@@ -253,6 +254,8 @@ class KayakScraper(BaseScraper):
             for result in merge_offers([p.offers for p in passes])
         ]
         kept = [result for result in results if within_constraints(query, result)]
+        self.last_stats["rows_kept"] = len(kept)
+        self.last_stats["rows_dropped_by_filters"] = len(results) - len(kept)
         if len(kept) < len(results):
             logger.warning(
                 "%s: dropped %d of %d rows outside the requested stops/time filters (Kayak returned them anyway)",
@@ -264,6 +267,10 @@ class KayakScraper(BaseScraper):
         label = redact.label(query) + (" [nonstop pass]" if nonstop else "")
         url = self.build_url(query, nonstop=nonstop)
         context = self._browser.new_context(viewport={"width": 1280, "height": 900}, locale="en-US")
+        # Updated as the pass goes, so it still holds what was learned if a step raises.
+        stats = (self.last_stats if self.last_stats is not None else {}).setdefault(
+            "nonstop" if nonstop else "main", {"ignored_polls": 0, "unreadable_polls": 0})
+        started = time.monotonic()
         try:
             page = context.new_page()
             polls: Dict[int, List[dict]] = {}
@@ -274,10 +281,14 @@ class KayakScraper(BaseScraper):
                 try:
                     data = response.json()
                 except Exception:
+                    stats["unreadable_polls"] += 1
                     logger.debug("%s: unreadable poll response", label, exc_info=True)
                     return
                 page_number = _page_number(data)
                 if page_number is None:
+                    # A rising count here, with timeouts, is what a change to the site's
+                    # response format would look like.
+                    stats["ignored_polls"] += 1
                     logger.debug("%s: ignoring poll response that isn't a results page (keys %s)", label, sorted(data)[:12])
                     return
                 polls.setdefault(page_number, []).append(data)
@@ -287,10 +298,15 @@ class KayakScraper(BaseScraper):
             page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_s * 1000)
 
             first = self._wait_for_page(page, polls, 1, label)
+            stats["first_page_seconds"] = round(time.monotonic() - started, 1)
             filtered_count = first.get("filteredCount") or 0
             total_pages, fetch = pages_to_fetch(filtered_count, first.get("pageSize") or DEFAULT_PAGE_SIZE,
                                                 self.max_pages)
+            stats["pages_available"] = total_pages
+            stats["results_reported"] = filtered_count
             payloads, truncated = self._fetch_pages(page, polls, first, fetch, label)
+            stats["pages_fetched"] = len(payloads)
+            stats["truncated"] = truncated
             logger.info("%s: %d results across %d page(s), fetched %d",
                         label, filtered_count, total_pages, len(payloads))
 

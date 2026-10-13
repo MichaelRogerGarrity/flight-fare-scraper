@@ -169,6 +169,51 @@ python -c "import json; print(json.dumps(json.load(open('routes.spec.json')), se
 Any S3-compatible store works — the endpoint just has to be given without a scheme.
 DuckDB's `httpfs` extension does the reading and writing, so there is no extra dependency.
 
+### Per-search records
+
+Public logs name routes only by salted id, which is enough to see that a search failed
+but not which one. So every search also leaves a record in the private bucket under
+`diagnostics/`, beside the fares and partitioned the same way:
+
+- what was searched: route, dates, days out
+- how it went: `ok`, `partial` or `failed`, attempts, and the full error text
+- how long it took: total seconds, and seconds until page 1 answered, for the main search
+  and the nonstop pass separately
+- how much was fetched: pages fetched against pages available, results the site reported,
+  rows kept and rows dropped by the stops and time filters
+- warning signs: in-page clicks past a covered button, and poll responses the parser
+  didn't recognize -- a count that rises alongside timeouts is what a change to the
+  site's response format would look like
+
+They carry real routes and error text, so they go only to the private bucket and are
+never printed or uploaded with the public run. Locally, `track --diagnostics FILE` writes
+the same records to a Parquet file. A record is written even for a search that failed on
+every attempt, which is when it is most useful.
+
+```sql
+-- Which routes fail, and how
+SELECT origin, destination, error_type, count(*) AS searches
+FROM read_parquet('s3://<bucket>/diagnostics/**/*.parquet')
+WHERE outcome <> 'ok' GROUP BY ALL ORDER BY searches DESC;
+
+-- Page-1 latency per day: a slow creep toward the 45s timeout comes before failures
+SELECT snapshot_date, round(median(first_page_seconds), 1) AS median_s,
+       round(quantile_cont(first_page_seconds, 0.95), 1) AS p95_s
+FROM read_parquet('s3://<bucket>/diagnostics/**/*.parquet') GROUP BY 1 ORDER BY 1;
+
+-- What the page cap leaves on the table
+SELECT origin, destination, avg(pages_available) AS available, avg(pages_fetched) AS fetched
+FROM read_parquet('s3://<bucket>/diagnostics/**/*.parquet') GROUP BY ALL;
+```
+
+### Each run's page
+
+The log step also writes this run's shards as a table on the run's page in GitHub
+Actions: searches, failures, blocks, partial searches, in-page clicks, rows and minutes
+per shard, with a shard that never ran called out. Counts only, like the run log.
+The run log itself gains `in_page_clicks` and `start_delay_min` -- how many minutes after
+its scheduled time the run actually started, since GitHub fires scheduled runs late.
+
 ### The weekly audit
 
 `.github/workflows/audit.yml` reads the published objects in place every Tuesday and

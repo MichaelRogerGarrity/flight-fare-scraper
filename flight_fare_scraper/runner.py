@@ -33,6 +33,10 @@ class BatchReport:
     failures: List[SearchFailure] = field(default_factory=list)
     truncated: int = 0  # searches that succeeded with only their first pages
     in_page_clicks: int = 0  # pages reached by clicking past something covering the button
+    # One flat record per search: what was searched, how it went, how long it took.
+    # Carries real routes and full error text, so it is for private storage only --
+    # never the console or anything uploaded with the public run.
+    records: List[dict] = field(default_factory=list)
 
 
 def _described(error: BaseException) -> str:
@@ -50,10 +54,16 @@ def search_with_retry(
     query: SearchQuery,
     delays: Sequence[float] = RETRY_DELAYS_S,
     sleep: Callable[[float], None] = time.sleep,
+    record: Optional[dict] = None,
 ) -> List[FlightResult]:
-    """Retry one search, relaunching the browser between attempts; other searches are unaffected."""
+    """Retry one search, relaunching the browser between attempts; other searches are unaffected.
+
+    `record`, if given, gets the number of attempts made.
+    """
     attempts = len(delays) + 1
     for attempt in range(1, attempts + 1):
+        if record is not None:
+            record["attempts"] = attempt
         try:
             if attempt > 1:
                 scraper.reset()
@@ -109,14 +119,25 @@ def run_queries(
                     sleep(pause)
                 searched_any = True
                 logger.info("searching %s: %s", site, redact.label(query))
+                attempt_info: dict = {}
+                started = time.monotonic()
+                clicks_before = getattr(scraper, "in_page_clicks", 0)
+                error: Optional[BaseException] = None
                 try:
-                    results = search_with_retry(scraper, query, delays, sleep)
-                except Exception as error:
-                    if not isinstance(error, RETRYABLE_ERRORS):
+                    results = search_with_retry(scraper, query, delays, sleep, record=attempt_info)
+                except Exception as caught:
+                    error = caught
+                    if not isinstance(caught, RETRYABLE_ERRORS):
                         logger.exception("%s: unexpected error (not retried)", redact.label(query))
                     report.failures.append(SearchFailure(
-                        query, f"{type(error).__name__}: {error}", bot_blocked=isinstance(error, BotBlockedError),
+                        query, f"{type(caught).__name__}: {caught}", bot_blocked=isinstance(caught, BotBlockedError),
                     ))
+                finally:
+                    report.records.append(search_record(
+                        query, scraper, attempt_info.get("attempts", 0), time.monotonic() - started,
+                        getattr(scraper, "in_page_clicks", 0) - clicks_before, error,
+                    ))
+                if error is not None:
                     continue
                 logger.info("%s: %d results", redact.label(query), len(results))
                 report.results.extend(results)
@@ -128,6 +149,59 @@ def run_queries(
 
     _log_summary(len(queries), report)
     return report
+
+
+# The shape of a search record, with fixed types. Inferred types drift between files --
+# a column that is empty in one run comes out INTEGER, and VARCHAR in the next -- and
+# files whose types disagree are a nuisance to read together.
+SEARCH_RECORD_TYPES = {
+    "site": "VARCHAR", "origin": "VARCHAR", "destination": "VARCHAR",
+    "depart_date": "DATE", "return_date": "DATE", "nonstop_only": "BOOLEAN",
+    "outcome": "VARCHAR", "attempts": "INTEGER", "seconds": "DOUBLE",
+    "error_type": "VARCHAR", "error_message": "VARCHAR",
+    "first_page_seconds": "DOUBLE", "pages_fetched": "INTEGER", "pages_available": "INTEGER",
+    "results_reported": "INTEGER", "nonstop_pass": "BOOLEAN",
+    "nonstop_first_page_seconds": "DOUBLE", "nonstop_pages_fetched": "INTEGER",
+    "nonstop_pages_available": "INTEGER", "truncated": "BOOLEAN",
+    "ignored_polls": "INTEGER", "unreadable_polls": "INTEGER",
+    "rows_kept": "INTEGER", "rows_dropped_by_filters": "INTEGER", "in_page_clicks": "INTEGER",
+}
+
+
+def search_record(query: SearchQuery, scraper: BaseScraper, attempts: int, seconds: float,
+                  in_page_clicks: int, error: Optional[BaseException]) -> dict:
+    """Flatten one search's outcome and the scraper's stats into a single row."""
+    stats = getattr(scraper, "last_stats", None) or {}
+    main = stats.get("main") or {}
+    nonstop = stats.get("nonstop") or {}
+    truncated = bool(main.get("truncated") or nonstop.get("truncated"))
+    return {
+        "site": query.site,
+        "origin": query.origin,
+        "destination": query.destination,
+        "depart_date": query.depart_date,
+        "return_date": query.return_date,
+        "nonstop_only": query.nonstop_only,
+        "outcome": "failed" if error is not None else "partial" if truncated else "ok",
+        "attempts": attempts,
+        "seconds": round(seconds, 1),
+        "error_type": type(error).__name__ if error is not None else None,
+        "error_message": str(error) if error is not None else None,
+        "first_page_seconds": main.get("first_page_seconds"),
+        "pages_fetched": main.get("pages_fetched"),
+        "pages_available": main.get("pages_available"),
+        "results_reported": main.get("results_reported"),
+        "nonstop_pass": bool(nonstop),
+        "nonstop_first_page_seconds": nonstop.get("first_page_seconds"),
+        "nonstop_pages_fetched": nonstop.get("pages_fetched"),
+        "nonstop_pages_available": nonstop.get("pages_available"),
+        "truncated": truncated,
+        "ignored_polls": main.get("ignored_polls", 0) + nonstop.get("ignored_polls", 0),
+        "unreadable_polls": main.get("unreadable_polls", 0) + nonstop.get("unreadable_polls", 0),
+        "rows_kept": stats.get("rows_kept") if error is None else 0,
+        "rows_dropped_by_filters": stats.get("rows_dropped_by_filters"),
+        "in_page_clicks": in_page_clicks,
+    }
 
 
 def _log_summary(total: int, report: BatchReport) -> None:
