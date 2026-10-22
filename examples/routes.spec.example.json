@@ -4,7 +4,8 @@
     "the FFS_ROUTES GitHub Actions secret -- never commit a filled-in copy.",
     "nights = days from departure to return. day_offsets are applied to both ends,",
     "so [-1, 0, 1] expands each base weekend into 9 date combinations.",
-    "min_nights drops trips shorter than this; the default of 1 excludes same-day round trips."
+    "min_nights drops trips shorter than this; the default of 1 excludes same-day round trips.",
+    "A route can set its own base_weekday (0-6, or a name like \"Tuesday\") to track a second trip shape, here a Tuesday-to-Wednesday fortnight beside the Friday-to-Sunday one."
   ],
   "base_weekday": 4,
   "horizon_days": 365,
@@ -63,6 +64,13 @@
       "nights": 16,
       "nonstop": false,
       "return_landing": "+1@0000,+1@2359"
+    },
+    {
+      "origin": "MIA",
+      "destination": "TYO",
+      "nights": 15,
+      "nonstop": false,
+      "base_weekday": "Tuesday"
     }
   ]
 }

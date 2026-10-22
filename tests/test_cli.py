@@ -61,4 +61,5 @@ def test_plan_writes_a_shard_matrix_for_github_actions(tmp_path):
     count = int(values["count"])
     assert _json.loads(values["shards"]) == list(range(count))
     assert values["today"] == "2026-09-30"
+    assert len(values["snapshot_date"]) == 10  # the Eastern date, fixed once for every shard
     assert count >= 2  # a year of weekends is far more than five searches

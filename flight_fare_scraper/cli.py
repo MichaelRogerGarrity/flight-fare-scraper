@@ -143,6 +143,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Still exit 0 if at most this many searches failed. A daily unattended "
                             "run shouldn't go red over one transient timeout. Any bot-block fails "
                             "regardless, since that is the signal worth reacting to.")
+    track.add_argument("--snapshot-date", dest="snapshot_date", default="",
+                       help="Record this YYYY-MM-DD as the snapshot date instead of reading the clock. "
+                            "A scheduled run passes one date to every shard, so shards finishing after "
+                            "midnight Eastern don't land on the next day.")
     track.add_argument("--diagnostics", default="",
                        help="Also write one record per search to this Parquet file. Holds real "
                             "routes and error text: with --push it goes to the private bucket, never "
@@ -242,21 +246,23 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     recorded = 0  # bound before the try so the summary still gets written if recording fails
     try:
         moment = db.snapshot_now()
+        day = (datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
+               if args.snapshot_date else moment.date())
         run_id = args.run_id or moment.strftime("%Y%m%dT%H%M%S")
-        recorded = db.insert_snapshot(con, report.results, moment)
+        recorded = db.insert_snapshot(con, report.results, moment, day)
         logger.info("recorded %d rows into %s", recorded, args.db)
         if args.push and recorded:
             bucket = storage.require_env(storage.BUCKET_ENV)
             storage.configure(con)
             storage.push_snapshot(
-                con, storage.uri(bucket, storage.snapshot_key(moment.date(), run_id)), moment.date()
+                con, storage.uri(bucket, storage.snapshot_key(day, run_id)), day
             )
-        _write_diagnostics(con, report, args, moment.date(), run_id)
+        _write_diagnostics(con, report, args, day, run_id)
     finally:
         con.close()
         if args.summary:
-            summary = summarize(report, queries, args, recorded,
-                                time.monotonic() - started, db.snapshot_now().date().isoformat())
+            run_date = args.snapshot_date or db.snapshot_now().date().isoformat()
+            summary = summarize(report, queries, args, recorded, time.monotonic() - started, run_date)
             Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
             Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
             logger.info("wrote run summary to %s", args.summary)
@@ -454,6 +460,8 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                 handle.write(f"shards={json.dumps(list(range(count)))}\n")
                 handle.write(f"count={count}\n")
                 handle.write(f"today={today}\n")
+                # The Eastern date every shard records against, fixed once for the run.
+                handle.write(f"snapshot_date={db.snapshot_now().date().isoformat()}\n")
                 delay = start_delay_minutes(args.cron, datetime.now(timezone.utc))
                 handle.write(f"start_delay={'' if delay is None else delay}\n")
     if args.show_routes:

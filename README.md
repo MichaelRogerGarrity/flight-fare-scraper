@@ -73,6 +73,12 @@ intended -- a 2-night weekend can come out as leaving a day late and returning a
 early, the same day. `min_nights` (default 1) drops anything shorter, so same-day round
 trips are never searched.
 
+A route can also set its own `base_weekday` -- a number (Monday is 0) or a name such as
+`"Tuesday"` -- to track a different trip shape beside the default. Listing the same route
+twice, once on Friday with 16 nights and once on Tuesday with 15, tracks both a Friday-to-
+Sunday and a Tuesday-to-Wednesday fortnight. The two never produce the same search: a day
+of slack around Friday departs Thursday to Saturday, around Tuesday Monday to Wednesday.
+
 See [examples/routes.spec.example.json](examples/routes.spec.example.json) for the shape.
 Check what a spec would do before running it:
 
@@ -98,6 +104,10 @@ runner's address is unchanged. Each shard gets a fresh runner, so a `plan` job c
 day's searches first and sizes the run at no more than 70 per shard. Adding routes adds
 shards rather than pushing any runner toward the wall. `plan` also fixes the date once, so
 shards that run past midnight UTC still expand the same day's schedule.
+
+`plan` also fixes the run's snapshot date once, and every shard records against it. With
+the start delay, a full run can finish late in the Eastern evening, and a shard stamping
+its own date from the clock could put part of one run on the next day.
 
 Each route is dealt out across the shards evenly, so no shard ends up with all the
 long-haul searches, which make several times more requests than a domestic one.

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
@@ -165,19 +165,25 @@ def insert_snapshot(
     con: duckdb.DuckDBPyConnection,
     results: List[FlightResult],
     snapshot_at: Optional[datetime] = None,
+    snapshot_date: Optional[date] = None,
 ) -> int:
-    """Record one dated snapshot. A naive `snapshot_at` is taken as Eastern wall-clock time."""
+    """Record one dated snapshot. A naive `snapshot_at` is taken as Eastern wall-clock time.
+
+    `snapshot_date` overrides the date part. A scheduled run's shards finish hours
+    apart, so stamping each from its own clock can split one run across two dates.
+    """
     frame = pd.DataFrame(
         [[getattr(result, name) for name in RESULT_COLUMNS] for result in results],
         columns=RESULT_COLUMNS,
     )
-    return insert_frame(con, frame, snapshot_at)
+    return insert_frame(con, frame, snapshot_at, snapshot_date)
 
 
 def insert_frame(
     con: duckdb.DuckDBPyConnection,
     frame: pd.DataFrame,
     snapshot_at: Optional[datetime] = None,
+    snapshot_date: Optional[date] = None,
 ) -> int:
     """Record one dated snapshot, replacing rather than duplicating earlier same-day rows.
 
@@ -192,12 +198,13 @@ def insert_frame(
         return 0
 
     moment = _as_snapshot_time(snapshot_at)
+    day = snapshot_date or moment.date()
     incoming = frame[RESULT_COLUMNS].copy()
     for name in RESULT_COLUMNS:
         dtype = _NULLABLE_DTYPES.get(COLUMN_TYPES[name])
         if dtype:
             incoming[name] = incoming[name].astype(dtype)
-    incoming.insert(0, "snapshot_date", moment.date())
+    incoming.insert(0, "snapshot_date", day)
     incoming.insert(1, "snapshot_datetime", moment)
 
     route_key = ", ".join(f"CAST({name} AS {COLUMN_TYPES[name]}) AS {name}" for name in ROUTE_KEY)
@@ -213,7 +220,7 @@ def insert_frame(
             con.execute(
                 f"DELETE FROM fares USING (SELECT DISTINCT {route_key} FROM incoming_fares) AS incoming_routes "
                 f"WHERE fares.snapshot_date = ? AND {route_match}",
-                [moment.date()],
+                [day],
             )
             con.execute(f"INSERT INTO fares ({target_columns}) SELECT {values} FROM incoming_fares")
             con.execute("COMMIT")

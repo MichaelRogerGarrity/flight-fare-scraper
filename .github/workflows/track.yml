@@ -47,6 +47,7 @@ jobs:
       count: ${{ steps.plan.outputs.count }}
       today: ${{ steps.plan.outputs.today }}
       start_delay: ${{ steps.plan.outputs.start_delay }}
+      snapshot_date: ${{ steps.plan.outputs.snapshot_date }}
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +115,9 @@ jobs:
           # another, and one starting after midnight UTC would otherwise expand a
           # different day's schedule than the others.
           TODAY: ${{ needs.plan.outputs.today }}
+          # One date for every shard: a run can last 15+ hours, and a shard finishing
+          # after midnight Eastern would otherwise stamp its rows with the next day.
+          SNAPSHOT_DATE: ${{ needs.plan.outputs.snapshot_date }}
           LIMIT: ${{ inputs.limit || '0' }}
         run: |
           today_flag="--today $TODAY"
@@ -128,7 +132,7 @@ jobs:
             $today_flag \
             --db "run-$SHARD.duckdb" \
             --push --run-id "${{ github.run_id }}-shard$SHARD" \
-            --summary "summaries/shard-$SHARD.json" \
+            --summary "summaries/shard-$SHARD.json"             --snapshot-date "$SNAPSHOT_DATE" \
             --log-file ""
 
       # Counts and exception types only -- no routes, prices, URLs or error text.
@@ -197,7 +201,7 @@ jobs:
           for attempt in 1 2 3; do
             python -m flight_fare_scraper.cli runlog --summaries summaries --out run-log.csv \
               --expected-count "${{ needs.plan.outputs.count }}" \
-              --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.today }}" \
+              --run-id-base "${{ github.run_id }}" --run-date "${{ needs.plan.outputs.snapshot_date }}" \
               --start-delay-min "${{ needs.plan.outputs.start_delay }}" \
               --step-summary "$GITHUB_STEP_SUMMARY"
             git add run-log.csv

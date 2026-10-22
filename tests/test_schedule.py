@@ -207,3 +207,51 @@ def test_min_nights_can_be_raised_or_lowered():
                             if abs((q.depart_date - FRIDAY).days) <= 1}
     assert stays(spec(min_nights=0)) == {0, 1, 2, 3, 4}
     assert stays(spec(min_nights=2)) == {2, 3, 4}
+
+
+TWO_SHAPES = {
+    **SPEC,
+    "routes": [
+        {"origin": "MIA", "destination": "TYO", "nights": 16, "nonstop": False},
+        {"origin": "MIA", "destination": "TYO", "nights": 15, "nonstop": False, "base_weekday": "Tuesday"},
+    ],
+}
+
+
+def test_a_route_can_be_built_around_another_weekday():
+    parsed = schedule.parse_spec(json.dumps(TWO_SHAPES))
+    queries = schedule.due_today(parsed, date(2026, 9, 20))
+    tuesday_trips = [q for q in queries if (q.return_date - q.depart_date).days in (14, 15, 16)
+                     and q.depart_date.weekday() in (0, 1, 2)]
+    assert tuesday_trips, "no Tuesday-based trips were generated"
+    # Base Tuesday with a day of slack: leave Mon/Tue/Wed, come back Tue/Wed/Thu.
+    assert {q.depart_date.weekday() for q in tuesday_trips} <= {0, 1, 2}
+    assert {q.return_date.weekday() for q in tuesday_trips} <= {1, 2, 3}
+
+
+def test_two_shapes_of_one_route_never_produce_the_same_search():
+    """Friday slack departs Thu-Sat and Tuesday slack Mon-Wed, so the two can't overlap --
+    which matters because a duplicate would overwrite the other in the snapshot."""
+    parsed = schedule.parse_spec(json.dumps(TWO_SHAPES))
+    for offset in range(14):
+        queries = schedule.due_today(parsed, date(2026, 9, 20) + timedelta(days=offset))
+        keys = [(q.origin, q.destination, q.depart_date, q.return_date) for q in queries]
+        assert len(keys) == len(set(keys))
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("Tuesday", 1), ("tue", 1), ("TUESDAY", 1), (1, 1), ("friday", 4), (0, 0), (6, 6)])
+def test_base_weekday_accepts_names_and_numbers(value, expected):
+    routes = [{**SPEC["routes"][0], "base_weekday": value}]
+    assert schedule.parse_spec(json.dumps({**SPEC, "routes": routes})).routes[0].base_weekday == expected
+
+
+@pytest.mark.parametrize("value", ["Tu", "funday", 7, -1, True])
+def test_base_weekday_rejects_nonsense(value):
+    routes = [{**SPEC["routes"][0], "base_weekday": value}]
+    with pytest.raises(ValueError, match="base_weekday"):
+        schedule.parse_spec(json.dumps({**SPEC, "routes": routes}))
+
+
+def test_routes_without_a_weekday_keep_the_spec_default():
+    assert schedule.parse_spec(json.dumps(SPEC)).routes[0].base_weekday is None
