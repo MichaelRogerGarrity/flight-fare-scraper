@@ -41,11 +41,11 @@ jobs:
           FFS_S3_KEY_ID: ${{ secrets.FFS_S3_KEY_ID }}
           FFS_S3_SECRET: ${{ secrets.FFS_S3_SECRET }}
         run: |
-          # 2026-09-25 is the first snapshot under the current spec; earlier ones would
+          # 2026-10-22 is the first snapshot under the current spec; earlier ones would
           # be judged against routes they never had.
           # Move this forward whenever FFS_ROUTES gains a route.
           # --coverage-days 7 matches the weekly schedule: each day's coverage is checked
           # by exactly one audit, so a day that came up short is reported once, not by
           # every audit after it.
           python -m flight_fare_scraper.cli audit --from-bucket --spec-env FFS_ROUTES \
-            --coverage-since 2026-09-25 --coverage-days 7
+            --coverage-since 2026-10-22 --coverage-days 7

@@ -42,6 +42,8 @@ class Route:
     destination: str
     nights: int
     options: Dict[str, str]
+    # The weekday trips on this route are built around; None means the spec's default.
+    base_weekday: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,8 @@ def parse_spec(text: str) -> Spec:
         where = f"route spec: routes[{index}]"
         if not isinstance(entry, dict):
             raise ValueError(f"{where} must be an object")
-        unknown = sorted(set(entry) - {"origin", "destination", "nights"} - set(ROUTE_PASSTHROUGH))
+        unknown = sorted(set(entry) - {"origin", "destination", "nights", "base_weekday"}
+                         - set(ROUTE_PASSTHROUGH))
         if unknown:
             raise ValueError(f"{where}: unknown key(s) {unknown}")
         nights = _require(entry, "nights", where)
@@ -97,6 +100,7 @@ def parse_spec(text: str) -> Spec:
             destination=str(_require(entry, "destination", where)).strip().upper(),
             nights=nights,
             options=options,
+            base_weekday=_weekday(entry["base_weekday"], where) if "base_weekday" in entry else None,
         ))
 
     tiers = []
@@ -122,17 +126,36 @@ def parse_spec(text: str) -> Spec:
     return Spec(
         routes=tuple(routes),
         tiers=tuple(tiers),
-        base_weekday=int(raw.get("base_weekday", FRIDAY)),
+        base_weekday=_weekday(raw.get("base_weekday", FRIDAY), "route spec"),
         horizon_days=int(raw.get("horizon_days", DEFAULT_HORIZON_DAYS)),
         min_days_out=int(raw.get("min_days_out", 1)),
         min_nights=int(raw.get("min_nights", 1)),
     )
 
 
-def base_weekends(spec: Spec, today: date) -> List[date]:
-    """Every base-weekday date from min_days_out to horizon_days out, inclusive."""
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def _weekday(value, where: str) -> int:
+    """A weekday as 0-6 (Monday is 0) or a name: "Tuesday", "tue"."""
+    if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 6:
+        return value
+    if isinstance(value, str):
+        name = value.strip().lower()
+        for index, day in enumerate(WEEKDAYS):
+            if len(name) >= 3 and day.startswith(name):
+                return index
+    raise ValueError(f"{where}: base_weekday must be 0-6 or a weekday name, got {value!r}")
+
+
+def base_weekends(spec: Spec, today: date, weekday: Optional[int] = None) -> List[date]:
+    """Every base-weekday date from min_days_out to horizon_days out, inclusive.
+
+    `weekday` overrides the spec's default, for a route built around another day.
+    """
+    weekday = spec.base_weekday if weekday is None else weekday
     first = today + timedelta(days=spec.min_days_out)
-    first += timedelta(days=(spec.base_weekday - first.weekday()) % 7)
+    first += timedelta(days=(weekday - first.weekday()) % 7)
     last = today + timedelta(days=spec.horizon_days)
     out = []
     while first <= last:
@@ -167,12 +190,12 @@ def _is_due(weekend: date, days_out: int, tier: Tier) -> bool:
 def due_today(spec: Spec, today: date) -> List[SearchQuery]:
     """The searches to run today. A weekend's turn comes up every tier.every_days."""
     queries = []
-    for weekend in base_weekends(spec, today):
-        days_out = (weekend - today).days
-        tier = tier_for(spec, days_out)
-        if tier is None or not _is_due(weekend, days_out, tier):
-            continue
-        for route in spec.routes:
+    for route in spec.routes:
+        for weekend in base_weekends(spec, today, route.base_weekday):
+            days_out = (weekend - today).days
+            tier = tier_for(spec, days_out)
+            if tier is None or not _is_due(weekend, days_out, tier):
+                continue
             for depart_offset in tier.day_offsets:
                 depart = weekend + timedelta(days=depart_offset)
                 if (depart - today).days < spec.min_days_out:

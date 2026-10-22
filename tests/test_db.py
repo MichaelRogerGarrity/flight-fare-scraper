@@ -148,3 +148,20 @@ def test_migrates_the_previous_schema_in_place(tmp_path):
         assert_row_matches(row, result)
     finally:
         con.close()
+
+
+def test_a_given_snapshot_date_overrides_the_clock(con):
+    """A shard finishing at 00:20 Eastern belongs to the run that started the day before.
+    Stamping each shard from its own clock split one run across two dates."""
+    after_midnight = datetime(2026, 10, 23, 0, 20)
+    db.insert_snapshot(con, [make_result()], snapshot_at=after_midnight, snapshot_date=date(2026, 10, 22))
+    assert con.execute("SELECT DISTINCT snapshot_date FROM fares").fetchall() == [(date(2026, 10, 22),)]
+    # The timestamp still says when it was actually recorded.
+    assert con.execute("SELECT DISTINCT snapshot_datetime FROM fares").fetchall() == [(after_midnight,)]
+
+
+def test_a_pinned_date_still_replaces_that_days_earlier_rows(con):
+    db.insert_snapshot(con, [make_result(price=900.0)], snapshot_at=EVENING, snapshot_date=date(2026, 9, 13))
+    db.insert_snapshot(con, [make_result(price=850.0)], snapshot_at=datetime(2026, 9, 14, 0, 30),
+                       snapshot_date=date(2026, 9, 13))
+    assert con.execute("SELECT price FROM fares").fetchall() == [(850.0,)]
