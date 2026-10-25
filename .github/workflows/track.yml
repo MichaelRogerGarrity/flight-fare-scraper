@@ -48,6 +48,7 @@ jobs:
       today: ${{ steps.plan.outputs.today }}
       start_delay: ${{ steps.plan.outputs.start_delay }}
       snapshot_date: ${{ steps.plan.outputs.snapshot_date }}
+      deadline: ${{ steps.plan.outputs.deadline }}
     steps:
       - uses: actions/checkout@v4
 
@@ -95,6 +96,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Earlier shards' summaries, if any. A shard whose breaker tripped means the site
+      # is refusing this run, and later shards would only rediscover the block on fresh
+      # runners -- on 2026-10-23 that was four hours of failing searches per shard.
+      - name: Collect earlier shards' summaries
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: run-summary-*
+          merge-multiple: true
+          path: prior-summaries
+
       - name: Scrape today's searches and publish them
         env:
           FFS_ROUTES: ${{ secrets.FFS_ROUTES }}
@@ -118,6 +130,8 @@ jobs:
           # One date for every shard: a run can last 15+ hours, and a shard finishing
           # after midnight Eastern would otherwise stamp its rows with the next day.
           SNAPSHOT_DATE: ${{ needs.plan.outputs.snapshot_date }}
+          # No search starts after this, so a run can't run into the next day's.
+          DEADLINE: ${{ needs.plan.outputs.deadline }}
           LIMIT: ${{ inputs.limit || '0' }}
         run: |
           today_flag="--today $TODAY"
@@ -133,6 +147,8 @@ jobs:
             --db "run-$SHARD.duckdb" \
             --push --run-id "${{ github.run_id }}-shard$SHARD" \
             --summary "summaries/shard-$SHARD.json"             --snapshot-date "$SNAPSHOT_DATE" \
+            --deadline "$DEADLINE" \
+            --halt-if-tripped prior-summaries \
             --log-file ""
 
       # Counts and exception types only -- no routes, prices, URLs or error text.

@@ -17,6 +17,12 @@ RETRY_DELAYS_S = (15, 60)  # wait before attempts 2 and 3
 SEARCH_JITTER_S = (5.0, 20.0)  # random pause between consecutive searches
 BOT_BLOCK_DELAY_MULTIPLIER = 3
 RETRYABLE_ERRORS = (ScraperError, PlaywrightError)
+# Consecutive failed searches after which a batch stops. At the ~1% background failure
+# rate, five in a row by chance is a one-in-ten-billion event; it is what a block looks
+# like. On 2026-10-23 shards failed every search for four hours each instead.
+BREAKER_AFTER = 5
+STOPPED_BREAKER = "breaker"
+STOPPED_DEADLINE = "deadline"
 
 
 @dataclass
@@ -37,6 +43,11 @@ class BatchReport:
     # Carries real routes and full error text, so it is for private storage only --
     # never the console or anything uploaded with the public run.
     records: List[dict] = field(default_factory=list)
+    # Searches never attempted because the batch stopped early, and why it stopped:
+    # STOPPED_BREAKER after too many failures in a row, STOPPED_DEADLINE when the run
+    # ran out of time, or "" if every search was attempted.
+    skipped: List[SearchQuery] = field(default_factory=list)
+    stopped: str = ""
 
 
 def _described(error: BaseException) -> str:
@@ -92,8 +103,16 @@ def run_queries(
     scraper_for: Callable[[str], Callable[..., BaseScraper]] = get_scraper_class,
     search_jitter_s: Optional[Tuple[float, float]] = SEARCH_JITTER_S,
     max_pages: Optional[int] = None,
+    breaker_after: Optional[int] = None,
+    deadline: Optional[float] = None,
+    clock: Callable[[], float] = time.time,
 ) -> BatchReport:
+    """Run every query, stopping early if `breaker_after` searches fail in a row or the
+    wall clock passes `deadline` (seconds since the epoch). Searches not reached are
+    listed in report.skipped and recorded, so a short run is never mistaken for a
+    complete one."""
     report = BatchReport()
+    consecutive_failures = 0
     searched_any = False
     by_site: Dict[str, List[SearchQuery]] = {}
     for query in queries:
@@ -112,7 +131,22 @@ def run_queries(
             continue
 
         try:
-            for query in site_queries:
+            for position, query in enumerate(site_queries):
+                reason = ""
+                if breaker_after and consecutive_failures >= breaker_after:
+                    reason = STOPPED_BREAKER
+                    logger.error("CIRCUIT_OPEN: %d searches failed in a row; stopping before the %d left",
+                                 consecutive_failures, len(site_queries) - position)
+                elif deadline is not None and clock() >= deadline:
+                    reason = STOPPED_DEADLINE
+                    logger.error("DEADLINE_REACHED: out of time for this run; stopping before the %d left",
+                                 len(site_queries) - position)
+                if reason:
+                    report.stopped = reason
+                    for skipped in site_queries[position:]:
+                        report.skipped.append(skipped)
+                        report.records.append(search_record(skipped, None, 0, 0.0, 0, None, outcome="skipped"))
+                    break
                 if searched_any and search_jitter_s:
                     pause = random.uniform(*search_jitter_s)
                     logger.debug("pausing %.1fs before the next search", pause)
@@ -138,7 +172,9 @@ def run_queries(
                         getattr(scraper, "in_page_clicks", 0) - clicks_before, error,
                     ))
                 if error is not None:
+                    consecutive_failures += 1
                     continue
+                consecutive_failures = 0
                 logger.info("%s: %d results", redact.label(query), len(results))
                 report.results.extend(results)
                 report.succeeded.append(query)
@@ -168,10 +204,10 @@ SEARCH_RECORD_TYPES = {
 }
 
 
-def search_record(query: SearchQuery, scraper: BaseScraper, attempts: int, seconds: float,
-                  in_page_clicks: int, error: Optional[BaseException]) -> dict:
+def search_record(query: SearchQuery, scraper: Optional[BaseScraper], attempts: int, seconds: float,
+                  in_page_clicks: int, error: Optional[BaseException], outcome: Optional[str] = None) -> dict:
     """Flatten one search's outcome and the scraper's stats into a single row."""
-    stats = getattr(scraper, "last_stats", None) or {}
+    stats = (getattr(scraper, "last_stats", None) or {}) if scraper is not None else {}
     main = stats.get("main") or {}
     nonstop = stats.get("nonstop") or {}
     truncated = bool(main.get("truncated") or nonstop.get("truncated"))
@@ -182,7 +218,7 @@ def search_record(query: SearchQuery, scraper: BaseScraper, attempts: int, secon
         "depart_date": query.depart_date,
         "return_date": query.return_date,
         "nonstop_only": query.nonstop_only,
-        "outcome": "failed" if error is not None else "partial" if truncated else "ok",
+        "outcome": outcome or ("failed" if error is not None else "partial" if truncated else "ok"),
         "attempts": attempts,
         "seconds": round(seconds, 1),
         "error_type": type(error).__name__ if error is not None else None,
@@ -205,6 +241,8 @@ def search_record(query: SearchQuery, scraper: BaseScraper, attempts: int, secon
 
 
 def _log_summary(total: int, report: BatchReport) -> None:
+    if report.skipped:
+        logger.error("%d of %d searches were not attempted (stopped: %s)", len(report.skipped), total, report.stopped)
     if report.in_page_clicks:
         logger.info("%d page(s) loaded by clicking past something covering the button",
                     report.in_page_clicks)

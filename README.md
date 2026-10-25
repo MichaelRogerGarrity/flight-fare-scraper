@@ -79,6 +79,29 @@ twice, once on Friday with 16 nights and once on Tuesday with 15, tracks both a 
 Sunday and a Tuesday-to-Wednesday fortnight. The two never produce the same search: a day
 of slack around Friday departs Thursday to Saturday, around Tuesday Monday to Wednesday.
 
+**Rotating the date grid.** A tier can set `combos_per_visit`. Each visit then searches
+the base trip plus a rotating handful of the other date combinations, so every weekend is
+still priced every visit while the whole grid is covered every few visits. The grid is
+most of the daily volume -- each near-term weekend is 8 or 9 searches without it -- so this
+is the main lever on how many searches a day a spec costs.
+
+**No intervals in whole weeks.** `every_days` may not be a multiple of 7: that would check
+each window on the same weekday every time, and any effect of the day a fare is searched
+would hide in the data. Any other interval rotates through all seven weekdays.
+
+**Check a spec's load before using it:**
+
+```bash
+python -m flight_fare_scraper.cli budget --spec routes.spec.json --limit 400
+```
+
+simulates every day of the next year with the real scheduler and reports searches per day
+(average and worst day), page requests, runtime, how the worst day splits by tier and
+route, and whether any window is stuck on one weekday. It exits 1 if any day exceeds
+`--limit`. `--costs` calibrates each route's cost from the per-search records. The worst
+day is the figure that matters: on 2026-10-22 a spec that doubled daily searches to ~780
+got the runners blocked within a day, after a month at ~400 had been clean.
+
 See [examples/routes.spec.example.json](examples/routes.spec.example.json) for the shape.
 Check what a spec would do before running it:
 
@@ -121,6 +144,14 @@ failing. Results are price-sorted, so page 1 alone holds the cheapest fares; the
 something drawn over the "Show more results" button on one runner -- the scraper first
 retries the click from inside the page, which ignores overlays, and if that fails the
 warning it logs says what host and language were served and what was covering the button.
+
+**The circuit breaker.** A shard stops after five searches fail in a row -- at the usual
+~1% failure rate that is not chance, it is a block, and retrying into a block only
+prolongs it. Searches it didn't reach are recorded as skipped, and later shards check the
+earlier ones' summaries and skip themselves rather than rediscover the block on fresh
+runners. Separately, no search starts after a deadline set by `plan`: 30 minutes before the
+next scheduled run, so one day's run can never overlap the next. Either way the run goes red,
+and the run log's `skipped` and `stopped` columns say how much was left undone and why.
 
 A shard tolerates up to three failed searches before it goes red: at ~70 searches a
 shard, one transient timeout is noise, and a daily unattended job that cries wolf gets
@@ -221,8 +252,9 @@ FROM read_parquet('s3://<bucket>/diagnostics/**/*.parquet') GROUP BY ALL;
 The log step also writes this run's shards as a table on the run's page in GitHub
 Actions: searches, failures, blocks, partial searches, in-page clicks, rows and minutes
 per shard, with a shard that never ran called out. Counts only, like the run log.
-The run log itself gains `in_page_clicks` and `start_delay_min` -- how many minutes after
-its scheduled time the run actually started, since GitHub fires scheduled runs late.
+The run log itself gains `in_page_clicks`, `start_delay_min` -- how many minutes after
+its scheduled time the run actually started, since GitHub fires scheduled runs late --
+and `skipped` and `stopped`, for a run the circuit breaker or the deadline cut short.
 
 ### The weekly audit
 

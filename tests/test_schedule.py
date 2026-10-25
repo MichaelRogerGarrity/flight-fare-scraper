@@ -11,7 +11,7 @@ SPEC = {
     "tiers": [
         {"max_days_out": 30, "every_days": 1, "day_offsets": [-1, 0, 1]},
         {"max_days_out": 90, "every_days": 3, "day_offsets": [-1, 0, 1]},
-        {"max_days_out": 365, "every_days": 7, "day_offsets": [0]},
+        {"max_days_out": 365, "every_days": 8, "day_offsets": [0]},
     ],
     "routes": [{"origin": "mia", "destination": "mco", "nights": 2, "nonstop": True}],
 }
@@ -108,14 +108,16 @@ def test_tiers_spread_their_weekends_across_the_week():
 def test_every_weekend_in_the_horizon_gets_scanned():
     parsed = spec()
     start = date(2026, 9, 20)
+    slowest = max(tier.every_days for tier in parsed.tiers)
     scanned = {
         query.depart_date
-        for offset in range(8)
+        for offset in range(slowest + 1)
         for query in schedule.due_today(parsed, start + timedelta(days=offset))
     }
-    # Weekly is the slowest tier, so one week must cover every weekend in the horizon.
-    for weekend in schedule.base_weekends(parsed, start + timedelta(days=7)):
-        assert weekend in scanned, f"{weekend} was never scanned in a full week"
+    # One full cycle of the slowest tier must reach every weekend that was inside the
+    # horizon for that whole cycle (one entering partway hasn't had its turn yet).
+    for weekend in schedule.base_weekends(parsed, start):
+        assert weekend in scanned, f"{weekend} was never scanned in a full {slowest}-day cycle"
 
 
 def test_min_days_out_excludes_departures_that_are_too_close():
@@ -255,3 +257,76 @@ def test_base_weekday_rejects_nonsense(value):
 
 def test_routes_without_a_weekday_keep_the_spec_default():
     assert schedule.parse_spec(json.dumps(SPEC)).routes[0].base_weekday is None
+
+
+@pytest.mark.parametrize("every", [7, 14, 21])
+def test_an_interval_in_whole_weeks_is_rejected(every):
+    """It would check each window on the same weekday every time, hiding any effect of
+    the day a fare is searched."""
+    tiers = [{"max_days_out": 365, "every_days": every, "day_offsets": [0]}]
+    with pytest.raises(ValueError, match="multiple of 7"):
+        schedule.parse_spec(json.dumps({**SPEC, "tiers": tiers}))
+
+
+@pytest.mark.parametrize("every", [2, 3, 6, 8, 12])
+def test_every_interval_spreads_its_weekends_evenly(every):
+    """Regression: weekends are 7 days apart, so a phase keyed on days_out plus the week
+    number left consecutive weekends 8 apart -- the same slot of 2, and only every other
+    slot of 6 or 12. Most weekends then came due together and daily volume swung wildly."""
+    tiers = [{"max_days_out": 365, "every_days": every, "day_offsets": [0]}]
+    parsed = schedule.parse_spec(json.dumps({**SPEC, "tiers": tiers}))
+    counts = [len(schedule.due_today(parsed, date(2026, 9, 20) + timedelta(days=i))) for i in range(every * 4)]
+    assert max(counts) - min(counts) <= 1, f"every {every} days: daily counts {counts}"
+
+
+@pytest.mark.parametrize("every", [1, 2, 3, 8])
+def test_a_window_is_checked_on_every_weekday_over_time(every):
+    tiers = [{"max_days_out": 365, "every_days": every, "day_offsets": [0]}]
+    parsed = schedule.parse_spec(json.dumps({**SPEC, "tiers": tiers}))
+    weekdays = {
+        (date(2026, 9, 20) + timedelta(days=i)).weekday()
+        for i in range(every * 7)
+        if any(q.depart_date == date(2027, 6, 4) for q in
+               schedule.due_today(parsed, date(2026, 9, 20) + timedelta(days=i)))
+    }
+    assert weekdays == set(range(7))
+
+
+ROTATING = {**SPEC, "tiers": [
+    {"max_days_out": 30, "every_days": 1, "day_offsets": [-1, 0, 1], "combos_per_visit": 3},
+    {"max_days_out": 365, "every_days": 8, "day_offsets": [0]},
+], "routes": [{"origin": "MIA", "destination": "TYO", "nights": 16, "nonstop": False}]}
+
+
+def _combos_on(parsed, today):
+    return {((q.depart_date - FRIDAY).days, (q.return_date - FRIDAY - timedelta(days=16)).days)
+            for q in schedule.due_today(parsed, today) if abs((q.depart_date - FRIDAY).days) <= 1}
+
+
+def test_rotation_searches_only_some_combinations_but_always_the_base_trip():
+    parsed = schedule.parse_spec(json.dumps(ROTATING))
+    for offset in range(20, 26):
+        combos = _combos_on(parsed, FRIDAY - timedelta(days=offset))
+        assert len(combos) == 3
+        assert (0, 0) in combos, "the base trip must be priced every visit"
+
+
+def test_rotation_covers_the_whole_grid_within_a_few_visits():
+    parsed = schedule.parse_spec(json.dumps(ROTATING))
+    seen = set()
+    for offset in range(20, 24):  # 4 daily visits: base + 2 of the other 8 each time
+        seen |= _combos_on(parsed, FRIDAY - timedelta(days=offset))
+    assert seen == {(d, r) for d in (-1, 0, 1) for r in (-1, 0, 1)}
+
+
+def test_without_rotation_every_combination_is_searched():
+    plain = {**ROTATING, "tiers": [{**ROTATING["tiers"][0], "combos_per_visit": None}, ROTATING["tiers"][1]]}
+    parsed = schedule.parse_spec(json.dumps(plain))
+    assert len(_combos_on(parsed, FRIDAY - timedelta(days=20))) == 9
+
+
+@pytest.mark.parametrize("bad", [0, -1, "three", True])
+def test_combos_per_visit_must_be_a_positive_integer(bad):
+    tiers = [{"max_days_out": 30, "every_days": 1, "day_offsets": [-1, 0, 1], "combos_per_visit": bad}]
+    with pytest.raises(ValueError, match="combos_per_visit"):
+        schedule.parse_spec(json.dumps({**SPEC, "tiers": tiers}))

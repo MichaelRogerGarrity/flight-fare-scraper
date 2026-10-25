@@ -13,11 +13,12 @@ from typing import List, Optional, Tuple
 import duckdb
 import pandas as pd
 
-from . import audit, db, schedule, storage
+from . import audit, budget, db, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
-from .runner import SEARCH_RECORD_TYPES, run_queries
+from .runner import (BREAKER_AFTER, SEARCH_RECORD_TYPES, STOPPED_BREAKER, BatchReport,
+                     run_queries, search_record)
 
 logger = logging.getLogger("flight_fare_scraper")
 
@@ -143,6 +144,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Still exit 0 if at most this many searches failed. A daily unattended "
                             "run shouldn't go red over one transient timeout. Any bot-block fails "
                             "regardless, since that is the signal worth reacting to.")
+    track.add_argument("--breaker-after", dest="breaker_after", type=int, default=BREAKER_AFTER,
+                       help=f"Stop after this many searches fail in a row (default {BREAKER_AFTER}; 0 disables). "
+                            "That is what a block looks like, and retrying into one only prolongs it.")
+    track.add_argument("--deadline", default="",
+                       help="Start no search after this UTC time (ISO 8601), so a run can't overlap the next")
+    track.add_argument("--halt-if-tripped", dest="halt_if_tripped", default="",
+                       help="Directory of earlier shards' summaries; if any stopped on its breaker, skip this "
+                            "shard entirely rather than rediscover the block")
     track.add_argument("--snapshot-date", dest="snapshot_date", default="",
                        help="Record this YYYY-MM-DD as the snapshot date instead of reading the clock. "
                             "A scheduled run passes one date to every shard, so shards finishing after "
@@ -175,12 +184,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
                       help="List each search. Prints real airport codes, so not for a public log.")
     plan.add_argument("--max-per-shard", dest="max_per_shard", type=int, default=0,
                       help="Size today's run into shards of at most this many searches each")
+    plan.add_argument("--max-run-hours", dest="max_run_hours", type=float, default=20.0,
+                      help="With --matrix-output, the latest a run may start a search, in hours from now; "
+                           "with --cron, also no later than 30 minutes before the next scheduled run")
     plan.add_argument("--cron", default="",
                       help="The schedule that fired this run (github.event.schedule); with "
                            "--matrix-output, records how many minutes late the run started")
     plan.add_argument("--matrix-output", dest="matrix_output", default="",
                       help="Append shards=[...], count=N and today=YYYY-MM-DD to this file, "
                            "in GitHub Actions output format ($GITHUB_OUTPUT)")
+
+    budget_parser = sub.add_parser(
+        "budget", help="Worst-case daily searches, requests and runtime for a route spec, before running it")
+    budget_source = budget_parser.add_mutually_exclusive_group(required=True)
+    budget_source.add_argument("--spec", help=SPEC_HELP)
+    budget_source.add_argument("--spec-env", dest="spec_env", help=SPEC_ENV_HELP)
+    budget_parser.add_argument("--start", help="First day to simulate, YYYY-MM-DD (default today)")
+    budget_parser.add_argument("--days", type=int, default=365, help="How many days to simulate (default 365)")
+    budget_parser.add_argument("--limit", type=int, default=400,
+                               help="Searches per day not to exceed (default 400). Exits 1 if any day does.")
+    budget_parser.add_argument("--costs", default="",
+                               help="Per-search records (Parquet glob) to calibrate each route's cost; "
+                                    "defaults to costs measured in October 2026")
 
     audit_parser = sub.add_parser("audit", help="Report on the quality of collected snapshots")
     audit_source = audit_parser.add_mutually_exclusive_group(required=True)
@@ -209,7 +234,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 RUN_LOG_FIELDS = (
     "run_date", "run_id", "shard", "searches", "succeeded", "failed",
     "bot_blocked", "rows", "max_pages", "seconds", "error_types", "partial",
-    "in_page_clicks", "start_delay_min",
+    "in_page_clicks", "start_delay_min", "skipped", "stopped",
 )
 
 
@@ -230,6 +255,8 @@ def summarize(report, queries: List[SearchQuery], args: argparse.Namespace,
         "bot_blocked": sum(failure.bot_blocked for failure in report.failures),
         "partial": getattr(report, "truncated", 0),
         "in_page_clicks": getattr(report, "in_page_clicks", 0),
+        "skipped": len(getattr(report, "skipped", [])),
+        "stopped": getattr(report, "stopped", ""),
         "rows": rows,
         "max_pages": args.max_pages if args.max_pages is not None else "",
         "seconds": round(seconds),
@@ -239,9 +266,30 @@ def summarize(report, queries: List[SearchQuery], args: argparse.Namespace,
     }
 
 
+def _upstream_tripped(directory: str) -> bool:
+    """Whether any earlier shard's summary says it stopped on its breaker."""
+    for path in Path(directory).glob("**/*.json") if directory else []:
+        try:
+            if json.loads(path.read_text(encoding="utf-8")).get("stopped") in (STOPPED_BREAKER, STOPPED_UPSTREAM):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+STOPPED_UPSTREAM = "upstream-breaker"
+
+
 def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     started = time.monotonic()
-    report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages)
+    if _upstream_tripped(args.halt_if_tripped):
+        logger.error("CIRCUIT_OPEN: an earlier shard stopped on its breaker; skipping all %d searches", len(queries))
+        report = BatchReport(skipped=list(queries), stopped=STOPPED_UPSTREAM,
+                             records=[search_record(q, None, 0, 0.0, 0, None, outcome="skipped") for q in queries])
+    else:
+        deadline = (datetime.fromisoformat(args.deadline).timestamp() if args.deadline else None)
+        report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages,
+                             breaker_after=args.breaker_after or None, deadline=deadline)
     con = db.connect(args.db)
     recorded = 0  # bound before the try so the summary still gets written if recording fails
     try:
@@ -266,6 +314,8 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
             Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
             Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
             logger.info("wrote run summary to %s", args.summary)
+    if report.stopped:
+        return 1  # a run that stopped early must not look like a good day
     return _track_exit_code(report, args.tolerate_failures)
 
 
@@ -400,27 +450,32 @@ def step_summary_markdown(rows: List[dict]) -> str:
     lines = [
         "### Fare tracking run",
         "",
-        "| shard | searches | succeeded | failed | blocked | partial | in-page clicks | rows | minutes | errors |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| shard | searches | succeeded | failed | skipped | blocked | partial | in-page clicks | rows | minutes | errors |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in sorted(rows, key=lambda r: _as_int(str(r.get("shard", "")).split("/")[0])):
         not_run = row.get("error_types") == NOT_RUN
-        lines.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+        stopped = row.get("stopped") or ""
+        lines.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
             row.get("shard", ""),
-            *(["-"] * 8 if not_run else [
+            *(["-"] * 9 if not_run else [
                 row.get("searches", ""), row.get("succeeded", ""), row.get("failed", ""),
-                row.get("bot_blocked", ""), row.get("partial", ""), row.get("in_page_clicks", ""),
-                row.get("rows", ""), round(_as_int(row.get("seconds")) / 60),
+                row.get("skipped", ""), row.get("bot_blocked", ""), row.get("partial", ""),
+                row.get("in_page_clicks", ""), row.get("rows", ""), round(_as_int(row.get("seconds")) / 60),
             ]),
-            "**did not run**" if not_run else (row.get("error_types") or ""),
+            "**did not run**" if not_run else
+            " ".join(filter(None, [f"**stopped: {stopped}**" if stopped else "", row.get("error_types") or ""])),
         ))
     searches = sum(_as_int(r.get("searches")) for r in rows)
     succeeded = sum(_as_int(r.get("succeeded")) for r in rows)
     not_run = sum(1 for r in rows if r.get("error_types") == NOT_RUN)
+    skipped = sum(_as_int(r.get("skipped")) for r in rows)
+    stops = sorted({r.get("stopped") for r in rows if r.get("stopped")})
     lines += [
         "",
         f"**{succeeded} of {searches} searches succeeded** across {len(rows) - not_run} of {len(rows)} shards"
-        f"{f', **{not_run} shard(s) did not run**' if not_run else ''}; "
+        f"{f', **{not_run} shard(s) did not run**' if not_run else ''}"
+        f"{f', **{skipped} searches skipped ({chr(44).join(stops)})**' if skipped else ''}; "
         f"{sum(_as_int(r.get('bot_blocked')) for r in rows)} bot-blocked, "
         f"{sum(_as_int(r.get('partial')) for r in rows)} partial, "
         f"{sum(_as_int(r.get('rows')) for r in rows):,} rows.",
@@ -429,6 +484,23 @@ def step_summary_markdown(rows: List[dict]) -> str:
     if delay is not None:
         lines.append(f"Started {delay} minutes after its scheduled time.")
     return "\n".join(lines) + "\n"
+
+
+def run_deadline(cron: str, now: datetime, max_run_hours: float) -> datetime:
+    """The latest a run may start a search.
+
+    At most max_run_hours from now, and with a daily cron, no later than 30 minutes
+    before it next fires. On 2026-10-22 and 10-23 runs overran into the next day's,
+    which then queued behind them, and a backlog of runs built up.
+    """
+    deadline = now + timedelta(hours=max_run_hours)
+    fields = (cron or "").split()
+    if len(fields) >= 2 and fields[0].isdigit() and fields[1].isdigit():
+        upcoming = now.replace(hour=int(fields[1]), minute=int(fields[0]), second=0, microsecond=0)
+        if upcoming <= now:
+            upcoming += timedelta(days=1)
+        deadline = min(deadline, upcoming - timedelta(minutes=30))
+    return deadline
 
 
 def start_delay_minutes(cron: str, now: datetime) -> Optional[int]:
@@ -462,8 +534,10 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                 handle.write(f"today={today}\n")
                 # The Eastern date every shard records against, fixed once for the run.
                 handle.write(f"snapshot_date={db.snapshot_now().date().isoformat()}\n")
-                delay = start_delay_minutes(args.cron, datetime.now(timezone.utc))
+                now = datetime.now(timezone.utc)
+                delay = start_delay_minutes(args.cron, now)
                 handle.write(f"start_delay={'' if delay is None else delay}\n")
+                handle.write(f"deadline={run_deadline(args.cron, now, args.max_run_hours).isoformat()}\n")
     if args.show_routes:
         for query in queries:
             print(f"  {query.label}{'' if query.nonstop_only else '  (stops allowed)'}")
@@ -476,6 +550,20 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     for position, count in enumerate(sorted(by_route.values(), reverse=True), start=1):
         print(f"  route {position}: {count}")
     return 0
+
+
+def run_budget(args: argparse.Namespace) -> int:
+    """Exit 1 when any simulated day exceeds --limit, so it can gate a spec change."""
+    text = (Path(args.spec).read_text(encoding="utf-8") if args.spec
+            else os.environ.get(args.spec_env, ""))
+    if not text.strip():
+        raise ValueError(f"environment variable {args.spec_env} is empty or unset")
+    spec = schedule.parse_spec(text)
+    start = datetime.strptime(args.start, "%Y-%m-%d").date() if args.start else date.today()
+    costs = budget.load_costs(args.costs) if args.costs else None
+    report = budget.simulate(spec, start, args.days, costs)
+    print(budget.render(report, args.limit))
+    return 1 if report.over(args.limit) else 0
 
 
 def run_audit(args: argparse.Namespace) -> int:
@@ -532,6 +620,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_runlog(args)
         if args.mode == "audit":
             return run_audit(args)
+        if args.mode == "budget":
+            return run_budget(args)
 
         if args.mode == "search":
             queries = [build_query(

@@ -166,7 +166,7 @@ def test_start_delay_is_recorded_on_every_row_of_the_run(tmp_path):
 def test_step_summary_lists_this_runs_shards_and_flags_one_that_did_not_run(tmp_path):
     write_summaries(tmp_path / "day", [
         {"run_date": "2026-10-13", "run_id": "9-shard0", "shard": "0/2", "searches": 67, "succeeded": 66,
-         "failed": 1, "bot_blocked": 0, "partial": 0, "in_page_clicks": 12, "rows": 70000, "seconds": 4200,
+         "failed": 1, "skipped": 0, "bot_blocked": 0, "partial": 0, "in_page_clicks": 12, "rows": 70000, "seconds": 4200,
          "error_types": "SearchTimeoutError"},
     ])
     summary = tmp_path / "summary.md"
@@ -174,7 +174,7 @@ def test_step_summary_lists_this_runs_shards_and_flags_one_that_did_not_run(tmp_
               "--expected-count", "2", "--run-id-base", "9", "--run-date", "2026-10-13",
               "--start-delay-min", "214", "--step-summary", str(summary)])
     text = summary.read_text(encoding="utf-8")
-    assert "| 0/2 | 67 | 66 | 1 | 0 | 0 | 12 | 70000 | 70 | SearchTimeoutError |" in text
+    assert "| 0/2 | 67 | 66 | 1 | 0 | 0 | 0 | 12 | 70000 | 70 | SearchTimeoutError |" in text
     assert "| 1/2 |" in text and "did not run" in text
     assert "66 of 67 searches succeeded" in text and "1 shard(s) did not run" in text
     assert "214 minutes after its scheduled time" in text
