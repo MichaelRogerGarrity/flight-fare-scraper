@@ -64,7 +64,7 @@ $arguments = @(
 # "Stop", which ended the first scheduled run at its first log line.
 #
 # Ending the task in Task Scheduler stops only this script, not the run. To stop a run:
-#   Get-CimInstance Win32_Process | ? CommandLine -match 'flight_fare_scraper.cli track' |
+#   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'flight_fare_scraper' |
 #       % { taskkill /PID $_.ProcessId /T /F }
 # --resume picks up where it stopped next time.
 & cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$runId.txt`" 2>&1`""
