@@ -40,18 +40,25 @@ $utc = { param($t) $t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") + "+00:0
 
 # One process does the whole day here, so pacing has no later shards to leave room for.
 # The snapshot date is pinned to the day the run started, even if it finishes after midnight.
-& $Python -m flight_fare_scraper.cli track `
-    --spec $Spec `
-    --db "home-runs/home.duckdb" `
-    --run-id $runId `
-    --snapshot-date $now.ToString("yyyy-MM-dd") `
-    --resume `
-    --publish-hf `
-    --pace-until (& $utc $now.AddHours($TargetHours)) `
-    --searches-after 0 `
-    --job-hours $TargetHours `
-    --deadline (& $utc $now.AddHours($DeadlineHours)) `
-    --summary "home-runs/summary-$runId.json" `
-    --log-file "home-runs/home.log" *> "home-runs/run-$runId.txt"
+$arguments = @(
+    "-m", "flight_fare_scraper.cli", "track",
+    "--spec", $Spec,
+    "--db", "home-runs/home.duckdb",
+    "--run-id", $runId,
+    "--snapshot-date", $now.ToString("yyyy-MM-dd"),
+    "--resume",
+    "--publish-hf",
+    "--pace-until", (& $utc $now.AddHours($TargetHours)),
+    "--searches-after", "0",
+    "--job-hours", "$TargetHours",
+    "--deadline", (& $utc $now.AddHours($DeadlineHours)),
+    "--summary", "home-runs/summary-$runId.json",
+    "--log-file", "home-runs/home.log"
+) | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }
 
-exit $LASTEXITCODE
+# Started as its own process with its output sent to files, not run with `&`: Windows
+# PowerShell turns a native program's first line on stderr -- where Python logs --
+# into a terminating error under "Stop", which ended the script and the task with it.
+$process = Start-Process -FilePath $Python -ArgumentList $arguments -NoNewWindow -Wait -PassThru `
+    -RedirectStandardError "home-runs/run-$runId.txt" -RedirectStandardOutput "home-runs/run-$runId.out.txt"
+exit $process.ExitCode
