@@ -8,20 +8,21 @@ doesn't come back within a reasonable time.
 
 ## Short version
 
-1. **Google Flights through [`fli`](https://github.com/punitarani/fli)** is the backup.
-   Free, no account, a Python library over Google Flights' internal API. A live
-   round-trip test returned 30 itineraries in 33 seconds, and its cheapest fare matched
-   Kayak's for the same trip to the dollar.
-2. **[SerpApi's Google Flights API](https://serpapi.com/google-flights-api)** is the
-   fallback if Google refuses the runners too. Paid and managed, so blocking is their
-   problem. It also exposes Google's price insights, which nothing else here does.
+1. **[SerpApi's Google Flights API](https://serpapi.com/google-flights-api)** is the
+   backup. Paid and managed, so blocking is their problem, and it also exposes Google's
+   price insights, which nothing else here does.
+2. **Google Flights through [`fli`](https://github.com/punitarani/fli)** has good data --
+   its cheapest fare matched Kayak's to the dollar -- but **Google refuses GitHub's
+   runners within a few searches** (tested 2026-10-26, below). It is only usable from a
+   residential connection, and running it daily from one risks getting that address
+   challenged across all of google.com.
 3. Everything else is either closed to us, dead, or measures something different.
 
 ## Options
 
 | source | access | cost at ~250 searches/day | data | main risk |
 | --- | --- | --- | --- | --- |
-| **Google Flights via `fli`** | open source (MIT), `pip install flights` (0.9.0 tested) | free | ~30 curated round-trip itineraries per search; per-leg airline, flight number, aircraft, times, legroom; includes Southwest | undocumented API can change; untested from datacenter IPs |
+| **Google Flights via `fli`** | open source (MIT), `pip install flights` (0.9.0 tested) | free | ~30 curated round-trip itineraries per search; per-leg airline, flight number, aircraft, times, legroom; includes Southwest | **refused from GitHub's runners** after 3-9 searches; undocumented API can change |
 | **SerpApi Google Flights** | API key | ~$150/month: 250 searches/month free, then $25/1k ... $150/15k; a round trip takes 2 calls (outbound list, then returns via `departure_token`) | same Google data, plus `price_insights`: lowest price, price level, typical range, price history | cost; 50 searches/hour cap on the free plan |
 | **Duffel** | account; live mode needs approval | ~$40/month: $0.005 per search beyond a 1500:1 search-to-book ratio, and we book nothing | airline-direct (NDC/GDS) fares, no online-agency prices | approval; no low-cost carriers like Southwest; fares not comparable to metasearch |
 | **Travelpayouts (Aviasales) data API** | free affiliate token | free | cached prices from other people's searches, 2-7 days old | sparse for exact dates; not live |
@@ -40,11 +41,28 @@ afternoon from a residential connection:
 - includes Southwest, which many aggregators omit
 - one price per itinerary: no per-reseller listings
 
-`fli` documents automatic rate limiting and retries, that roughly one request in sixty
-comes back empty and is retried, and that EU/EEA addresses get a consent page it handles
-with a cookie. It says nothing about server or CI use. **Whether Google tolerates GitHub's
-runners is the open question** and the first thing to test, with a single search from a
-runner, before building anything on it.
+### From GitHub's runners (`.github/workflows/backup-source-check.yml`)
+
+Twelve round trips on placeholder routes, `top_n=5` (6 requests each), fresh runner each:
+
+| spacing | succeeded | then |
+| --- | --- | --- |
+| 30 s | 9 (~54 requests in ~5 min) | instant empty responses for the rest |
+| 2 min | 3 (~18 requests) | instant empty responses for the remaining 20 minutes |
+
+Slower spacing did worse, so this is not a rate limit that pacing could work under: Google
+stops answering GitHub's runner addresses after a few dozen requests, and the second
+runner got less than the first, suggesting the range as a whole was flagged. The same
+pattern as Kayak's block of the runners on 2026-10-23.
+
+### Usage limits
+
+`fli` imposes none beyond its own throttle (10 requests a second, with a round trip's
+follow-up requests sent in parallel). A round trip costs `1 + top_n` requests -- `top_n`
+outbound options are each expanded into their returns, capped at 10 -- so ~250 round trips
+a day is ~1,500 requests at the default, ~500 at `top_n=1`. Google publishes no limit for
+the endpoint (it is undocumented); robots.txt disallows `/travel/flights/search` though not
+the `/_/FlightsFrontendUi/` endpoint `fli` calls.
 
 ## If we switch
 
@@ -56,9 +74,11 @@ runner, before building anything on it.
 - **What doesn't:** anything weighted by resellers. Google returns ~30 curated
   itineraries, not 1,000+ seller listings, so counts and averages across rows mean
   something different. `MIN(price)` is the comparable figure.
-- **Search budget:** a round trip costs `1 + top_n` page fetches in `fli`; the same
-  worst-day discipline (`cli budget`) applies to Google's tolerance as to Kayak's, and the
-  circuit breaker and deadline carry over unchanged.
+- **Where it runs:** not from GitHub's runners (above). Through SerpApi, the runners only
+  call SerpApi, which does the fetching.
+- **Search budget:** a SerpApi round trip is 2 calls (outbound list, then returns via
+  `departure_token`); the same worst-day discipline (`cli budget`) applies, and the circuit
+  breaker and deadline carry over unchanged.
 
 ## Sources
 
