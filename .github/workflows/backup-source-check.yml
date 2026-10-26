@@ -1,0 +1,83 @@
+# Manually triggered check of the backup fare source (Google Flights through fli; see
+# docs/backup-fare-sources.md): can a GitHub-hosted runner get results, and how many
+# before it is refused? The routes are fixed placeholders unrelated to what this repo
+# tracks, so the public log shows nothing private. Prints outcomes and timings only.
+name: Backup source check
+
+on:
+  workflow_dispatch:
+    inputs:
+      searches:
+        description: Round-trip searches to run (each is 1 + top_n requests to Google)
+        default: "12"
+      top_n:
+        description: Outbound options to expand into round trips (fli's default is 5)
+        default: "5"
+      pause:
+        description: Seconds between searches
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install fli
+        run: pip install flights==0.9.0
+
+      - name: Search
+        env:
+          SEARCHES: ${{ inputs.searches }}
+          TOP_N: ${{ inputs.top_n }}
+          PAUSE: ${{ inputs.pause }}
+        run: |
+          python - <<'PYEOF'
+          import os, time, traceback
+          from datetime import date, timedelta
+          from fli.models import (Airport, FlightSearchFilters, FlightSegment, PassengerInfo,
+                                  SeatType, MaxStops, SortBy, TripType)
+          from fli.search import SearchFlights
+
+          ROUTES = [("LAX", "SEA"), ("JFK", "LHR"), ("BOS", "DEN"), ("SFO", "SIN"), ("ATL", "LAS"), ("SEA", "HNL")]
+          searches, top_n, pause = int(os.environ["SEARCHES"]), int(os.environ["TOP_N"]), float(os.environ["PAUSE"])
+          ok = failed = empty = 0
+          for i in range(searches):
+              origin, dest = ROUTES[i % len(ROUTES)]
+              out = date.today() + timedelta(days=30 + 7 * (i // len(ROUTES)))
+              back = out + timedelta(days=7)
+              filters = FlightSearchFilters(
+                  trip_type=TripType.ROUND_TRIP,
+                  passenger_info=PassengerInfo(adults=1),
+                  flight_segments=[
+                      FlightSegment(departure_airport=[[Airport[origin], 0]], arrival_airport=[[Airport[dest], 0]],
+                                    travel_date=out.isoformat()),
+                      FlightSegment(departure_airport=[[Airport[dest], 0]], arrival_airport=[[Airport[origin], 0]],
+                                    travel_date=back.isoformat()),
+                  ],
+                  seat_type=SeatType.ECONOMY, stops=MaxStops.ANY, sort_by=SortBy.CHEAPEST,
+              )
+              started = time.monotonic()
+              try:
+                  results = SearchFlights().search(filters, top_n=top_n)
+                  seconds = time.monotonic() - started
+                  if results:
+                      ok += 1
+                      cheapest = min(r[0].price for r in results if r and r[0].price)
+                      print(f"{i+1:3d} {origin}-{dest} ok     {len(results):3d} itineraries  {seconds:5.1f}s  cheapest ${cheapest:,.0f}")
+                  else:
+                      empty += 1
+                      print(f"{i+1:3d} {origin}-{dest} EMPTY  {seconds:5.1f}s")
+              except Exception as error:
+                  failed += 1
+                  print(f"{i+1:3d} {origin}-{dest} FAILED {time.monotonic() - started:5.1f}s  {type(error).__name__}: {str(error)[:120]}")
+              if i < searches - 1:
+                  time.sleep(pause)
+          print(f"\n{ok} ok, {empty} empty, {failed} failed of {searches}; ~{searches * (1 + top_n)} requests to Google")
+          PYEOF
