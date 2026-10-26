@@ -14,3 +14,6 @@ __pycache__/
 # Route spec and published-snapshot working files (never commit a filled-in spec)
 routes.spec.json
 run-*.duckdb
+
+# Runs from a home machine: real route list, local database, search records
+home-runs/

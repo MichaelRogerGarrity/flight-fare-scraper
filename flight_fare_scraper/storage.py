@@ -31,6 +31,10 @@ SNAPSHOT_PREFIX = "snapshots"
 # Per-search records: real routes and full error text. Kept beside the fares in the
 # private bucket and never anywhere the public run can see.
 DIAGNOSTICS_PREFIX = "diagnostics"
+# The bucket as namespace/name, for uploads through the Hugging Face login saved on the
+# machine running (`hf auth login`) instead of S3 keys. Set where the run happens; never
+# written into the repo.
+HF_BUCKET_ENV = "FFS_HF_BUCKET"
 _SAFE_KEY_PART = re.compile(r"[^A-Za-z0-9._-]")
 
 
@@ -105,6 +109,21 @@ def push_snapshot(
     con.execute("DROP TABLE ffs_push")
     logger.info("published %d rows to object storage", rows)
     return rows
+
+
+def publish_hf(files: List[tuple], bucket_id: str) -> None:
+    """Upload (local path, key) pairs to a bucket through the saved Hugging Face login.
+
+    For runs from a machine with `hf auth login` done rather than S3 keys in its
+    environment: the same objects land under the same keys either way, so readers
+    can't tell a run published this way from one published over S3.
+    """
+    from huggingface_hub import batch_bucket_files  # only needed for this path
+    for local, key in files:
+        if ".." in key or key.startswith("/") or "//" in key:
+            raise StorageError(f"refusing an unsafe object key: {key!r}")
+    batch_bucket_files(bucket_id, add=[(str(local), key) for local, key in files])
+    logger.info("published %d object(s) through the Hugging Face login", len(files))
 
 
 def push_table(con: duckdb.DuckDBPyConnection, table: str, destination: str) -> int:

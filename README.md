@@ -276,6 +276,35 @@ implausible prices, durations and timestamps. It checks coverage over the last 7
 only: a short day stays short forever, so checking all history would fail every audit
 after one bad day. With a weekly audit, a 7-day window checks each day exactly once.
 
+### Running from a home machine
+
+When the site refuses GitHub's runners, the same run can go from a home connection.
+`scripts/run-home.ps1` runs the whole day in one process, paced to finish about 5
+hours after it starts (`-TargetHours`). It publishes through the machine's Hugging
+Face login (`hf auth login`) instead of S3 keys, with `track --publish-hf`, so the
+objects land under the same keys as a workflow run's and readers can't tell them
+apart. The bucket is given as `-Bucket namespace/name` or `FFS_HF_BUCKET`, and the route
+spec is the local, gitignored one, so neither goes in the repo. Local state goes in
+`home-runs/`, also gitignored.
+
+A daily Windows scheduled task runs it, with "run as soon as possible after a scheduled
+start is missed" so it still runs on days the machine is off at the scheduled time. A
+late start just shifts the day's run: the snapshot date is pinned to the day the run
+started, and no search starts more than 20 hours in (`-DeadlineHours`).
+
+```powershell
+$repo = "C:\path\to\flight-fare-scraper"
+$action = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $repo `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$repo\scripts\run-home.ps1`" -Bucket <namespace>/<bucket>"
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 22) -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName "Flight fare tracking (home)" -Action $action `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At 9:00AM) -Settings $settings
+```
+
+`publish-hf` uploads an earlier local run that wasn't published at the time:
+`publish-hf --db home-runs/home.duckdb --snapshot-date YYYY-MM-DD --run-id <id> [--diagnostics FILE]`.
+
 ## Keeping the public log clean
 
 This repo is public; its Actions logs are too. Two things keep routes out of them:

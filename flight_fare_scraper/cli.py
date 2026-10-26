@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 from datetime import date, datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -138,6 +139,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     track.add_argument("--db", default="fares.duckdb", help="DuckDB database file (default: fares.duckdb)")
     track.add_argument("--push", action="store_true",
                        help="Also publish this snapshot to object storage (see FFS_S3_* in the README)")
+    track.add_argument("--publish-hf", dest="publish_hf", action="store_true",
+                       help="Publish the snapshot and search records through this machine's Hugging "
+                            f"Face login (`hf auth login`) to the bucket named in {storage.HF_BUCKET_ENV}, "
+                            "instead of S3 keys. Same objects, same keys as --push.")
     track.add_argument("--run-id", dest="run_id", default="",
                        help="Name for the published object; defaults to the snapshot timestamp")
     track.add_argument("--tolerate-failures", dest="tolerate_failures", type=int, default=0,
@@ -237,6 +242,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--log-file", default="", help=LOG_FILE_HELP)
     audit_parser.add_argument("--verbose", action="store_true", help="Show debug-level logs")
 
+    publish = sub.add_parser("publish-hf", parents=[common],
+                             help="Upload an earlier run's snapshot (and search records) from a local DuckDB "
+                                  "file through this machine's Hugging Face login")
+    publish.add_argument("--db", required=True, help="Local DuckDB file the run recorded into")
+    publish.add_argument("--snapshot-date", dest="snapshot_date", required=True, help="YYYY-MM-DD to publish")
+    publish.add_argument("--run-id", dest="run_id", required=True, help="Name for the published objects")
+    publish.add_argument("--diagnostics", default="", help="The run's search-record Parquet file, if any")
+
     pull = sub.add_parser("pull", parents=[common],
                           help="Merge published snapshots from object storage into a local DuckDB file")
     pull.add_argument("--db", default="fares.duckdb", help="DuckDB database file to merge into")
@@ -325,7 +338,9 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
             storage.push_snapshot(
                 con, storage.uri(bucket, storage.snapshot_key(day, run_id)), day
             )
-        _write_diagnostics(con, report, args, day, run_id)
+        diagnostics_file = _write_diagnostics(con, report, args, day, run_id)
+        if args.publish_hf:
+            _publish_run_hf(con, day, run_id, recorded, diagnostics_file)
     finally:
         con.close()
         if args.summary:
@@ -347,8 +362,8 @@ def _write_diagnostics(con, report, args: argparse.Namespace, snapshot: date, ru
     saved by the time this runs, and losing diagnostics must not cost them. The rows
     carry real routes and error text, so nothing about them reaches the console.
     """
-    if not report.records or not (args.diagnostics or args.push):
-        return
+    if not report.records or not (args.diagnostics or args.push or getattr(args, "publish_hf", False)):
+        return None
     try:
         frame = pd.DataFrame(report.records)
         frame.insert(0, "snapshot_date", snapshot)
@@ -361,18 +376,36 @@ def _write_diagnostics(con, report, args: argparse.Namespace, snapshot: date, ru
         columns = ", ".join(f'CAST("{name}" AS {kind}) AS "{name}"' for name, kind in types.items())
         con.execute(f"CREATE OR REPLACE TEMP TABLE ffs_diagnostics AS "
                     f"SELECT {columns} FROM ffs_diagnostics_frame")
-        if args.diagnostics:
-            Path(args.diagnostics).parent.mkdir(parents=True, exist_ok=True)
-            con.execute(f"COPY ffs_diagnostics TO {storage._sql_literal(args.diagnostics)} (FORMAT PARQUET)")
-            logger.info("wrote %d search record(s) to %s", len(frame), args.diagnostics)
+        target = args.diagnostics or (str(Path(args.db).with_name(f"diagnostics-{run_id}.parquet"))
+                                      if getattr(args, "publish_hf", False) else "")
+        if target:
+            Path(target).parent.mkdir(parents=True, exist_ok=True)
+            con.execute(f"COPY ffs_diagnostics TO {storage._sql_literal(target)} (FORMAT PARQUET)")
+            logger.info("wrote %d search record(s) to %s", len(frame), target)
         if args.push:
             bucket = storage.require_env(storage.BUCKET_ENV)
             storage.configure(con)
             key = storage.snapshot_key(snapshot, run_id, prefix=storage.DIAGNOSTICS_PREFIX)
             rows = storage.push_table(con, "ffs_diagnostics", storage.uri(bucket, key))
             logger.info("published %d search record(s) to object storage", rows)
+        return target or None
     except Exception as error:  # diagnostics must never be what fails a run
         logger.warning("DIAGNOSTICS_NOT_SAVED: %s", type(error).__name__)
+        return None
+
+
+def _publish_run_hf(con, day: date, run_id: str, recorded: int, diagnostics_file: Optional[str]) -> None:
+    """Upload a run's snapshot and search records through the Hugging Face login."""
+    bucket = storage.require_env(storage.HF_BUCKET_ENV)
+    files = []
+    if recorded:
+        snapshot_file = str(Path(tempfile.gettempdir()) / f"ffs-snapshot-{run_id}.parquet")
+        storage.push_snapshot(con, snapshot_file, day)  # COPY works for a local path too
+        files.append((snapshot_file, storage.snapshot_key(day, run_id)))
+    if diagnostics_file and Path(diagnostics_file).exists():
+        files.append((diagnostics_file, storage.snapshot_key(day, run_id, prefix=storage.DIAGNOSTICS_PREFIX)))
+    if files:
+        storage.publish_hf(files, bucket)
 
 
 def _track_exit_code(report, tolerated: int) -> int:
@@ -642,6 +675,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         if args.mode == "pull":
             return run_pull(args)
+        if args.mode == "publish-hf":
+            con = db.connect(args.db)
+            try:
+                day = datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
+                (rows,) = con.execute("SELECT count(*) FROM fares WHERE snapshot_date = ?", [day]).fetchone()
+                _publish_run_hf(con, day, args.run_id, rows, args.diagnostics or None)
+                logger.info("published %d rows for %s", rows, day)
+            finally:
+                con.close()
+            return 0
         if args.mode == "runlog":
             return run_runlog(args)
         if args.mode == "audit":
