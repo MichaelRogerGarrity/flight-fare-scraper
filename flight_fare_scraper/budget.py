@@ -115,7 +115,7 @@ def simulate(spec: schedule.Spec, start: date, days: int,
     return Report(out, coverage, stuck)
 
 
-def render(report: Report, limit: int) -> str:
+def render(report: Report, limit: int, target_hours: float = 14.0) -> str:
     worst = report.worst
     lines = [
         f"searches/day   average {report.average('searches'):6.0f}   worst {worst.searches:5d} on {worst.day}"
@@ -125,6 +125,13 @@ def render(report: Report, limit: int) -> str:
         f"runtime/day    average {report.average('seconds') / 3600:6.1f}h  worst {max(d.seconds for d in report.days) / 3600:5.1f}h"
         f"   (searching only; add the start delay)",
     ]
+    # Pacing spreads the searches to end about target_hours after the run starts. What
+    # matters is the gap that leaves between searches, especially on the busiest day.
+    target = target_hours * 3600
+    def gap(d: Day) -> float:
+        return max(0.0, (target - d.seconds) / d.searches) if d.searches else 0.0
+    lines.append(f"paced to {target_hours:g}h  searches spaced ~{sum(gap(d) for d in report.days) / len(report.days):.0f}s apart"
+                 f" on average, ~{gap(worst):.0f}s on the busiest day")
     if report.weekday_coverage is not None:
         lines.append(f"weekday spread {report.weekday_coverage:.0%} of windows checked 7+ times were checked on all 7 weekdays;"
                      f" {report.stuck_on_one_weekday} checked 3+ times were stuck on one weekday")

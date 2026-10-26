@@ -13,7 +13,7 @@ from typing import List, Optional, Tuple
 import duckdb
 import pandas as pd
 
-from . import audit, budget, db, schedule, storage
+from . import audit, budget, db, pacing, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
@@ -152,6 +152,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     track.add_argument("--halt-if-tripped", dest="halt_if_tripped", default="",
                        help="Directory of earlier shards' summaries; if any stopped on its breaker, skip this "
                             "shard entirely rather than rediscover the block")
+    track.add_argument("--pace-until", dest="pace_until", default="",
+                       help="Spread this shard's searches so the whole run ends around this UTC time "
+                            "(ISO 8601), with --searches-after giving the searches still to come")
+    track.add_argument("--searches-after", dest="searches_after", type=int, default=0,
+                       help="Searches in the shards that run after this one (with --pace-until)")
+    track.add_argument("--job-hours", dest="job_hours", type=float, default=5.0,
+                       help="Longest this shard may pace itself to run, in hours (default 5, under "
+                            "the 6-hour job limit)")
     track.add_argument("--snapshot-date", dest="snapshot_date", default="",
                        help="Record this YYYY-MM-DD as the snapshot date instead of reading the clock. "
                             "A scheduled run passes one date to every shard, so shards finishing after "
@@ -184,6 +192,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                       help="List each search. Prints real airport codes, so not for a public log.")
     plan.add_argument("--max-per-shard", dest="max_per_shard", type=int, default=0,
                       help="Size today's run into shards of at most this many searches each")
+    plan.add_argument("--target-hours", dest="target_hours", type=float, default=14.0,
+                      help="With --matrix-output, spread the run to end about this many hours from now "
+                           "(always at least an hour before the deadline)")
     plan.add_argument("--max-run-hours", dest="max_run_hours", type=float, default=20.0,
                       help="With --matrix-output, the latest a run may start a search, in hours from now; "
                            "with --cron, also no later than 30 minutes before the next scheduled run")
@@ -203,6 +214,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     budget_parser.add_argument("--days", type=int, default=365, help="How many days to simulate (default 365)")
     budget_parser.add_argument("--limit", type=int, default=400,
                                help="Searches per day not to exceed (default 400). Exits 1 if any day does.")
+    budget_parser.add_argument("--target-hours", dest="target_hours", type=float, default=14.0,
+                               help="Pacing target to report spacing for (default 14, as the workflow uses)")
     budget_parser.add_argument("--costs", default="",
                                help="Per-search records (Parquet glob) to calibrate each route's cost; "
                                     "defaults to costs measured in October 2026")
@@ -288,8 +301,15 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                              records=[search_record(q, None, 0, 0.0, 0, None, outcome="skipped") for q in queries])
     else:
         deadline = (datetime.fromisoformat(args.deadline).timestamp() if args.deadline else None)
+        pacer = None
+        if args.pace_until:
+            pacer = pacing.Pacer(until=datetime.fromisoformat(args.pace_until).timestamp(),
+                                 later_searches=max(0, args.searches_after),
+                                 job_until=time.time() + args.job_hours * 3600)
+            logger.info("pacing %d searches (+%d in later shards) to end around %s; first pause ~%.0fs",
+                        len(queries), args.searches_after, args.pace_until, pacer.mean_pause(len(queries)))
         report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages,
-                             breaker_after=args.breaker_after or None, deadline=deadline)
+                             breaker_after=args.breaker_after or None, deadline=deadline, pacer=pacer)
     con = db.connect(args.db)
     recorded = 0  # bound before the try so the summary still gets written if recording fails
     try:
@@ -537,7 +557,13 @@ def run_plan(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                 now = datetime.now(timezone.utc)
                 delay = start_delay_minutes(args.cron, now)
                 handle.write(f"start_delay={'' if delay is None else delay}\n")
-                handle.write(f"deadline={run_deadline(args.cron, now, args.max_run_hours).isoformat()}\n")
+                deadline = run_deadline(args.cron, now, args.max_run_hours)
+                handle.write(f"deadline={deadline.isoformat()}\n")
+                # Pacing aims an hour short of the deadline, so a slow day still finishes.
+                pace_until = min(now + timedelta(hours=args.target_hours), deadline - timedelta(hours=1))
+                handle.write(f"pace_until={pace_until.isoformat()}\n")
+                after = [sum(sizes[index + 1:]) for index in range(count)]
+                handle.write(f"searches_after={json.dumps(after)}\n")
     if args.show_routes:
         for query in queries:
             print(f"  {query.label}{'' if query.nonstop_only else '  (stops allowed)'}")
@@ -562,7 +588,7 @@ def run_budget(args: argparse.Namespace) -> int:
     start = datetime.strptime(args.start, "%Y-%m-%d").date() if args.start else date.today()
     costs = budget.load_costs(args.costs) if args.costs else None
     report = budget.simulate(spec, start, args.days, costs)
-    print(budget.render(report, args.limit))
+    print(budget.render(report, args.limit, args.target_hours))
     return 1 if report.over(args.limit) else 0
 
 

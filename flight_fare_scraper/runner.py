@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from playwright.sync_api import Error as PlaywrightError
 
 from . import redact
+from .pacing import Pacer
 from .models import FlightResult, SearchQuery
 from .scrapers import get_scraper_class
 from .scrapers.base import BaseScraper, BotBlockedError, ScraperError
@@ -106,6 +107,7 @@ def run_queries(
     breaker_after: Optional[int] = None,
     deadline: Optional[float] = None,
     clock: Callable[[], float] = time.time,
+    pacer: Optional[Pacer] = None,
 ) -> BatchReport:
     """Run every query, stopping early if `breaker_after` searches fail in a row or the
     wall clock passes `deadline` (seconds since the epoch). Searches not reached are
@@ -147,7 +149,11 @@ def run_queries(
                         report.skipped.append(skipped)
                         report.records.append(search_record(skipped, None, 0, 0.0, 0, None, outcome="skipped"))
                     break
-                if searched_any and search_jitter_s:
+                if searched_any and pacer is not None:
+                    pause = pacer.pause(len(site_queries) - position)
+                    logger.debug("pacing: pausing %.0fs before the next search", pause)
+                    sleep(pause)
+                elif searched_any and search_jitter_s:
                     pause = random.uniform(*search_jitter_s)
                     logger.debug("pausing %.1fs before the next search", pause)
                     sleep(pause)
@@ -167,6 +173,8 @@ def run_queries(
                         query, f"{type(caught).__name__}: {caught}", bot_blocked=isinstance(caught, BotBlockedError),
                     ))
                 finally:
+                    if pacer is not None:
+                        pacer.observe(time.monotonic() - started)
                     report.records.append(search_record(
                         query, scraper, attempt_info.get("attempts", 0), time.monotonic() - started,
                         getattr(scraper, "in_page_clicks", 0) - clicks_before, error,

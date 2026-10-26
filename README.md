@@ -145,6 +145,18 @@ something drawn over the "Show more results" button on one runner -- the scraper
 retries the click from inside the page, which ignores overlays, and if that fails the
 warning it logs says what host and language were served and what was covering the button.
 
+**Pacing.** A run spreads its searches across the day instead of firing them back to
+back. `plan` sets a target end, 14 hours after the run starts by default and always an hour
+before the deadline, and each shard spaces its searches to take its share of the time left
+-- given the searches still to come in later shards -- after subtracting what searches are
+measured to take. It re-measures as it goes, so a slow shard leaves later ones pacing faster
+instead of overrunning, and no shard paces itself past five hours, under the job limit. Each
+pause is randomised around the computed figure. With ~250 searches a day that is about two
+minutes between searches rather than 5-20 seconds. Whether the site's tolerance is per hour
+or per day isn't known; if it is per hour this is gentler, and if per day it costs nothing.
+A manual run can set its own target with the `target_hours` input; smoke tests (`limit`)
+aren't paced. `cli budget` reports the spacing a spec would get.
+
 **The circuit breaker.** A shard stops after five searches fail in a row -- at the usual
 ~1% failure rate that is not chance, it is a block, and retrying into a block only
 prolongs it. Searches it didn't reach are recorded as skipped, and later shards check the

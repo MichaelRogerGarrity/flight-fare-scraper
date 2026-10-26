@@ -29,6 +29,9 @@ on:
       limit:
         description: Cap each shard at this many searches (0 = no cap). Use a small number to smoke-test.
         default: "0"
+      target_hours:
+        description: Spread the run to end about this many hours after it starts (searching takes ~6)
+        default: "14"
 
 permissions:
   contents: read
@@ -49,6 +52,8 @@ jobs:
       start_delay: ${{ steps.plan.outputs.start_delay }}
       snapshot_date: ${{ steps.plan.outputs.snapshot_date }}
       deadline: ${{ steps.plan.outputs.deadline }}
+      pace_until: ${{ steps.plan.outputs.pace_until }}
+      searches_after: ${{ steps.plan.outputs.searches_after }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,13 +73,15 @@ jobs:
           # Empty on a manual run; on a scheduled one, the cron that fired it, from
           # which plan records how late the run actually started.
           CRON: ${{ github.event.schedule }}
+          TARGET_HOURS: ${{ inputs.target_hours || '14' }}
         run: |
           today_flag=""
           if [ -n "$TODAY" ]; then today_flag="--today $TODAY"; fi
           # 70 leaves a wide margin under the ~110-125 searches after which the site
           # stops answering one runner, even for a shard heavy with long-haul routes.
           python -m flight_fare_scraper.cli plan --spec-env FFS_ROUTES $today_flag \
-            --max-per-shard 70 --cron "$CRON" --matrix-output "$GITHUB_OUTPUT"
+            --max-per-shard 70 --cron "$CRON" --target-hours "$TARGET_HOURS" \
+            --matrix-output "$GITHUB_OUTPUT"
 
   track:
     needs: plan
@@ -132,9 +139,18 @@ jobs:
           SNAPSHOT_DATE: ${{ needs.plan.outputs.snapshot_date }}
           # No search starts after this, so a run can't run into the next day's.
           DEADLINE: ${{ needs.plan.outputs.deadline }}
+          # Pacing: the whole run aims to end around PACE_UNTIL, and this shard spaces its
+          # searches to take its share of the time left, given the searches after it.
+          PACE_UNTIL: ${{ needs.plan.outputs.pace_until }}
+          SEARCHES_AFTER: ${{ fromJSON(needs.plan.outputs.searches_after)[matrix.shard] }}
           LIMIT: ${{ inputs.limit || '0' }}
         run: |
           today_flag="--today $TODAY"
+          # A smoke test (LIMIT > 0) wants an answer quickly, so it isn't paced.
+          pace_flags=""
+          if [ "$LIMIT" = "0" ]; then
+            pace_flags="--pace-until $PACE_UNTIL --searches-after $SEARCHES_AFTER"
+          fi
           # --log-file "" keeps the debug log (which carries search URLs) off this runner
           # entirely; the console stays at INFO, where routes appear only as salted ids.
           python -m flight_fare_scraper.cli track \
@@ -149,6 +165,7 @@ jobs:
             --summary "summaries/shard-$SHARD.json"             --snapshot-date "$SNAPSHOT_DATE" \
             --deadline "$DEADLINE" \
             --halt-if-tripped prior-summaries \
+            $pace_flags \
             --log-file ""
 
       # Counts and exception types only -- no routes, prices, URLs or error text.
