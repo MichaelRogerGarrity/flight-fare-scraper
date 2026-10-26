@@ -22,6 +22,8 @@ param(
     # Don't start a day's run before this local time, so an early logon waits for the
     # scheduled start rather than beginning the day early.
     [string]$NotBefore = "09:00",
+    # Result pages per pass, as the scheduled workflow fetches; the daily budget assumes it.
+    [int]$MaxPages = 5,
     [string]$Python = "python"
 )
 
@@ -47,6 +49,7 @@ $arguments = @(
     "--run-id", $runId,
     "--snapshot-date", $now.ToString("yyyy-MM-dd"),
     "--resume",
+    "--max-pages", "$MaxPages",
     "--publish-hf",
     "--pace-until", (& $utc $now.AddHours($TargetHours)),
     "--searches-after", "0",
@@ -54,11 +57,15 @@ $arguments = @(
     "--deadline", (& $utc $now.AddHours($DeadlineHours)),
     "--summary", "home-runs/summary-$runId.json",
     "--log-file", "home-runs/home.log"
-) | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }
+) | ForEach-Object { "`"$_`"" }
 
-# Started as its own process with its output sent to files, not run with `&`: Windows
-# PowerShell turns a native program's first line on stderr -- where Python logs --
-# into a terminating error under "Stop", which ended the script and the task with it.
-$process = Start-Process -FilePath $Python -ArgumentList $arguments -NoNewWindow -Wait -PassThru `
-    -RedirectStandardError "home-runs/run-$runId.txt" -RedirectStandardOutput "home-runs/run-$runId.out.txt"
-exit $process.ExitCode
+# Through cmd.exe, which does the redirecting: Windows PowerShell turns a native
+# program's first line on stderr -- where Python logs -- into a terminating error under
+# "Stop", which ended the first scheduled run at its first log line.
+#
+# Ending the task in Task Scheduler stops only this script, not the run. To stop a run:
+#   Get-CimInstance Win32_Process | ? CommandLine -match 'flight_fare_scraper.cli track' |
+#       % { taskkill /PID $_.ProcessId /T /F }
+# --resume picks up where it stopped next time.
+& cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$runId.txt`" 2>&1`""
+exit $LASTEXITCODE
