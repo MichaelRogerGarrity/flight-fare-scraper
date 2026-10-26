@@ -1,6 +1,7 @@
-"""Publishing through a machine's Hugging Face login instead of S3 keys."""
+﻿"""Publishing through a machine's Hugging Face login instead of S3 keys."""
 
 import json
+import re
 import sys
 import types
 
@@ -12,6 +13,7 @@ from flight_fare_scraper.config import build_query
 from tests.factories import make_result
 
 QUERY = build_query("MIA", "TYO", "2026-11-27", "2026-12-13", nonstop="false")
+PART = re.compile(r"^(snapshots|diagnostics)/snapshot_date=2026-11-01/home-1-\d{6}-\d{6}\.parquet$")
 
 
 @pytest.fixture
@@ -30,39 +32,51 @@ def _spec(tmp_path):
     return str(path)
 
 
-def test_a_run_publishes_its_snapshot_and_records_under_the_usual_keys(tmp_path, monkeypatch, uploads):
+def _searching(error=None):
+    """A stand-in for the runner that reports each search as it finishes, as the real one does."""
+    def fake_run(queries, **options):
+        report = BatchReport()
+        for query in queries:
+            record = search_record(query, None, 1, 40.0, 0, error)
+            results = [] if error else [make_result(depart_date=str(query.depart_date),
+                                                    return_date=str(query.return_date))]
+            report.records.append(record)
+            options["on_search"](query, results, record)
+        return report
+    return fake_run
+
+
+def test_a_run_publishes_its_fares_and_records_in_the_day_partition(tmp_path, monkeypatch, uploads):
     monkeypatch.setenv(storage.HF_BUCKET_ENV, "someone/bucket")
-    monkeypatch.setattr(cli, "run_queries", lambda queries, **_: BatchReport(
-        results=[make_result()], succeeded=[queries[0]],
-        records=[search_record(queries[0], None, 1, 40.0, 0, None)]))
+    monkeypatch.setattr(cli, "run_queries", _searching())
     code = cli.main(["track", "--spec", _spec(tmp_path), "--today", "2026-11-01", "--db", str(tmp_path / "home.duckdb"),
-                     "--run-id", "home-1", "--snapshot-date", "2026-11-01", "--publish-hf", "--log-file", ""])
+                     "--run-id", "home-1", "--snapshot-date", "2026-11-01", "--publish-hf", "--checkpoint-every", "1000", "--log-file", ""])
     assert code == 0
     (bucket, files), = uploads
     assert bucket == "someone/bucket"
     keys = sorted(key for _, key in files)
-    assert keys == ["diagnostics/snapshot_date=2026-11-01/home-1.parquet",
-                    "snapshots/snapshot_date=2026-11-01/home-1.parquet"]
+    assert len(keys) == 2 and all(PART.match(key) for key in keys)
+    assert [key.split("/")[0] for key in keys] == ["diagnostics", "snapshots"]
 
 
 def test_records_are_published_even_when_no_fares_were_recorded(tmp_path, monkeypatch, uploads):
     """A run where every search failed is exactly when its records matter."""
     monkeypatch.setenv(storage.HF_BUCKET_ENV, "someone/bucket")
-    monkeypatch.setattr(cli, "run_queries", lambda queries, **_: BatchReport(
-        records=[search_record(q, None, 3, 200.0, 0, RuntimeError("blocked")) for q in queries]))
+    monkeypatch.setattr(cli, "run_queries", _searching(RuntimeError("blocked")))
     cli.main(["track", "--spec", _spec(tmp_path), "--today", "2026-11-01", "--db", str(tmp_path / "home.duckdb"),
-              "--run-id", "home-2", "--snapshot-date", "2026-11-01", "--publish-hf", "--log-file", ""])
+              "--run-id", "home-1", "--snapshot-date", "2026-11-01", "--publish-hf", "--checkpoint-every", "1000", "--log-file", ""])
     (_, files), = uploads
-    assert [key for _, key in files] == ["diagnostics/snapshot_date=2026-11-01/home-2.parquet"]
+    assert [key.split("/")[0] for _, key in files] == ["diagnostics"]
 
 
-def test_the_bucket_comes_only_from_the_environment(tmp_path, monkeypatch, uploads):
+def test_a_missing_bucket_fails_before_any_search(tmp_path, monkeypatch, uploads):
     monkeypatch.delenv(storage.HF_BUCKET_ENV, raising=False)
-    monkeypatch.setattr(cli, "run_queries", lambda queries, **_: BatchReport(results=[make_result()], succeeded=[queries[0]]))
+    searched = []
+    monkeypatch.setattr(cli, "run_queries", lambda queries, **_: searched.append(queries) or BatchReport())
     code = cli.main(["track", "--spec", _spec(tmp_path), "--today", "2026-11-01", "--db", str(tmp_path / "home.duckdb"),
-                     "--run-id", "home-3", "--publish-hf", "--log-file", ""])
-    assert code == 1  # recorded locally, but publishing failed loudly
-    assert uploads == []
+                     "--run-id", "home-3", "--publish-hf", "--checkpoint-every", "1000", "--log-file", ""])
+    assert code == 2
+    assert searched == [] and uploads == []
 
 
 def test_an_earlier_run_can_be_published_afterwards(tmp_path, monkeypatch, uploads):

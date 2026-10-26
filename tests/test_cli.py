@@ -18,6 +18,7 @@ def test_track_records_the_successes_and_exits_nonzero_on_partial_failure(tmp_pa
     tokyo, bangkok = load_queries(str(config))
 
     def fake_run(queries, headless, **options):
+        options["on_search"](tokyo, [make_result()], None)  # each search is saved as it finishes
         return BatchReport(
             results=[make_result()],
             succeeded=[tokyo],

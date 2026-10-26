@@ -3,6 +3,7 @@ import csv
 import json
 import logging
 import os
+import signal
 import sys
 import tempfile
 import time
@@ -14,12 +15,11 @@ from typing import List, Optional, Tuple
 import duckdb
 import pandas as pd
 
-from . import audit, budget, db, pacing, schedule, storage
+from . import audit, budget, checkpoint, db, pacing, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
-from .runner import (BREAKER_AFTER, SEARCH_RECORD_TYPES, STOPPED_BREAKER, BatchReport,
-                     run_queries, search_record)
+from .runner import BREAKER_AFTER, STOPPED_BREAKER, BatchReport, run_queries, search_record
 
 logger = logging.getLogger("flight_fare_scraper")
 
@@ -173,6 +173,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Also write one record per search to this Parquet file. Holds real "
                             "routes and error text: with --push it goes to the private bucket, never "
                             "to a public log or artifact.")
+    track.add_argument("--resume", action="store_true",
+                       help="Skip searches that already have fares in --db for this snapshot date, so a "
+                            "run cut short can be started again and pick up where it stopped")
+    track.add_argument("--checkpoint-every", dest="checkpoint_every", type=int,
+                       default=checkpoint.EVERY_SEARCHES,
+                       help="With --push or --publish-hf, publish what is saved every this many searches "
+                            f"(default {checkpoint.EVERY_SEARCHES})")
+    track.add_argument("--checkpoint-minutes", dest="checkpoint_minutes", type=float,
+                       default=checkpoint.EVERY_MINUTES,
+                       help="... or after this many minutes, whichever comes first "
+                            f"(default {checkpoint.EVERY_MINUTES:g})")
     track.add_argument("--summary", default="",
                        help="Write a counts-only JSON summary of this run here. Safe to publish: "
                             "it holds no routes, prices or error messages.")
@@ -243,12 +254,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--verbose", action="store_true", help="Show debug-level logs")
 
     publish = sub.add_parser("publish-hf", parents=[common],
-                             help="Upload an earlier run's snapshot (and search records) from a local DuckDB "
-                                  "file through this machine's Hugging Face login")
-    publish.add_argument("--db", required=True, help="Local DuckDB file the run recorded into")
-    publish.add_argument("--snapshot-date", dest="snapshot_date", required=True, help="YYYY-MM-DD to publish")
-    publish.add_argument("--run-id", dest="run_id", required=True, help="Name for the published objects")
-    publish.add_argument("--diagnostics", default="", help="The run's search-record Parquet file, if any")
+                             help="Upload what earlier runs saved in a local DuckDB file but never published, "
+                                  "through this machine's Hugging Face login")
+    publish.add_argument("--db", required=True, help="Local DuckDB file the runs recorded into")
+    publish.add_argument("--snapshot-date", dest="snapshot_date", default="",
+                         help="Also upload this whole YYYY-MM-DD, for a file recorded without a publish queue")
+    publish.add_argument("--run-id", dest="run_id", default="", help="Name for that day's objects")
+    publish.add_argument("--diagnostics", default="", help="That run's search-record Parquet file, if any")
 
     pull = sub.add_parser("pull", parents=[common],
                           help="Merge published snapshots from object storage into a local DuckDB file")
@@ -306,96 +318,140 @@ def _upstream_tripped(directory: str) -> bool:
 STOPPED_UPSTREAM = "upstream-breaker"
 
 
+def check_publish_config(args: argparse.Namespace) -> None:
+    """Fail before searching, not hours later at the first upload."""
+    if getattr(args, "push", False):
+        storage.require_env(storage.BUCKET_ENV)
+    if getattr(args, "publish_hf", False):
+        storage.require_env(storage.HF_BUCKET_ENV)
+
+
+def _publish_target(con, args: argparse.Namespace) -> Optional[checkpoint.Target]:
+    if args.push:
+        return checkpoint.S3Target(con, storage.require_env(storage.BUCKET_ENV))
+    if args.publish_hf:
+        return checkpoint.HuggingFaceTarget(storage.require_env(storage.HF_BUCKET_ENV))
+    return None
+
+
+def _raise_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
 def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
+    """Run the searches, saving each to the database as it finishes and publishing them
+    in parts as the run goes (see checkpoint.py), so a run cut short keeps its work."""
     started = time.monotonic()
-    if _upstream_tripped(args.halt_if_tripped):
-        logger.error("CIRCUIT_OPEN: an earlier shard stopped on its breaker; skipping all %d searches", len(queries))
-        report = BatchReport(skipped=list(queries), stopped=STOPPED_UPSTREAM,
-                             records=[search_record(q, None, 0, 0.0, 0, None, outcome="skipped") for q in queries])
-    else:
-        deadline = (datetime.fromisoformat(args.deadline).timestamp() if args.deadline else None)
-        pacer = None
-        if args.pace_until:
-            pacer = pacing.Pacer(until=datetime.fromisoformat(args.pace_until).timestamp(),
-                                 later_searches=max(0, args.searches_after),
-                                 job_until=time.time() + args.job_hours * 3600)
-            logger.info("pacing %d searches (+%d in later shards) to end around %s; first pause ~%.0fs",
-                        len(queries), args.searches_after, args.pace_until, pacer.mean_pause(len(queries)))
-        report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages,
-                             breaker_after=args.breaker_after or None, deadline=deadline, pacer=pacer)
+    started_at = db.snapshot_now()
+    day = (datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
+           if args.snapshot_date else started_at.date())
+    run_id = args.run_id or started_at.strftime("%Y%m%dT%H%M%S")
+    # GitHub cancels a job with SIGINT, then SIGTERM: treat both as an interrupt, which
+    # stops the run like its deadline would and still publishes what it saved.
+    previous_handlers = {signal.SIGINT: signal.getsignal(signal.SIGINT),
+                         signal.SIGTERM: signal.signal(signal.SIGTERM, _raise_interrupt)}
     con = db.connect(args.db)
-    recorded = 0  # bound before the try so the summary still gets written if recording fails
+    report = BatchReport()
+    saver = None
     try:
-        moment = db.snapshot_now()
-        day = (datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
-               if args.snapshot_date else moment.date())
-        run_id = args.run_id or moment.strftime("%Y%m%dT%H%M%S")
-        recorded = db.insert_snapshot(con, report.results, moment, day)
-        logger.info("recorded %d rows into %s", recorded, args.db)
-        if args.push and recorded:
-            bucket = storage.require_env(storage.BUCKET_ENV)
-            storage.configure(con)
-            storage.push_snapshot(
-                con, storage.uri(bucket, storage.snapshot_key(day, run_id)), day
-            )
-        diagnostics_file = _write_diagnostics(con, report, args, day, run_id)
-        if args.publish_hf:
-            _publish_run_hf(con, day, run_id, recorded, diagnostics_file)
+        saver = checkpoint.Checkpoint(con, day, run_id, args.shard, _publish_target(con, args),
+                                      every=args.checkpoint_every, minutes=args.checkpoint_minutes)
+        if args.resume:
+            done = saver.done_today()
+            remaining = [q for q in queries if checkpoint.query_key(q) not in done]
+            if len(remaining) < len(queries):
+                logger.info("resuming: %d of %d searches already recorded for %s",
+                            len(queries) - len(remaining), len(queries), day)
+            queries = remaining
+        if _upstream_tripped(args.halt_if_tripped):
+            logger.error("CIRCUIT_OPEN: an earlier shard stopped on its breaker; skipping all %d searches",
+                         len(queries))
+            report = BatchReport(skipped=list(queries), stopped=STOPPED_UPSTREAM,
+                                 records=[search_record(q, None, 0, 0.0, 0, None, outcome="skipped")
+                                          for q in queries])
+        elif queries:
+            deadline = (datetime.fromisoformat(args.deadline).timestamp() if args.deadline else None)
+            pacer = None
+            if args.pace_until:
+                pacer = pacing.Pacer(until=datetime.fromisoformat(args.pace_until).timestamp(),
+                                     later_searches=max(0, args.searches_after),
+                                     job_until=time.time() + args.job_hours * 3600)
+                logger.info("pacing %d searches (+%d in later shards) to end around %s; first pause ~%.0fs",
+                            len(queries), args.searches_after, args.pace_until, pacer.mean_pause(len(queries)))
+            report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages,
+                                 breaker_after=args.breaker_after or None, deadline=deadline, pacer=pacer,
+                                 on_search=saver.add)
+        else:
+            logger.info("every search due today is already recorded")
+        # Searching is over. GitHub follows its SIGINT with a SIGTERM a few seconds later;
+        # neither should cut short the upload of what the run saved.
+        for name in ("SIGINT", "SIGTERM"):
+            signal.signal(getattr(signal, name), signal.SIG_IGN)
+        saver.add_records([r for r in report.records if r["outcome"] == "skipped"])
+        logger.info("recorded %d rows into %s", saver.rows, args.db)
+        _write_diagnostics(con, report, args, day, run_id)
     finally:
-        con.close()
-        if args.summary:
-            run_date = args.snapshot_date or db.snapshot_now().date().isoformat()
-            summary = summarize(report, queries, args, recorded, time.monotonic() - started, run_date)
-            Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-            logger.info("wrote run summary to %s", args.summary)
+        try:
+            if saver is not None:
+                saver.close()
+        finally:
+            con.close()
+            for signum, handler in previous_handlers.items():
+                signal.signal(signum, handler)
+            if args.summary:
+                summary = summarize(report, queries, args, saver.rows if saver else 0,
+                                    time.monotonic() - started, day.isoformat())
+                Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+                logger.info("wrote run summary to %s", args.summary)
     if report.stopped:
         return 1  # a run that stopped early must not look like a good day
     return _track_exit_code(report, args.tolerate_failures)
 
 
 def _write_diagnostics(con, report, args: argparse.Namespace, snapshot: date, run_id: str) -> None:
-    """Save one row per search: to --diagnostics locally, and with --push to the bucket.
+    """Write this run's search records to --diagnostics, a local Parquet file.
 
-    Published even when no fares were recorded -- a shard where every search failed is
-    exactly when this is needed. Never allowed to fail the run: the fares are already
-    saved by the time this runs, and losing diagnostics must not cost them. The rows
-    carry real routes and error text, so nothing about them reaches the console.
+    (Publishing them goes with the fares, part by part: see checkpoint.py.) Never
+    allowed to fail the run: the fares are already saved by the time this runs. The
+    rows carry real routes and error text, so nothing about them reaches the console.
     """
-    if not report.records or not (args.diagnostics or args.push or getattr(args, "publish_hf", False)):
-        return None
+    if not report.records or not args.diagnostics:
+        return
     try:
-        frame = pd.DataFrame(report.records)
-        frame.insert(0, "snapshot_date", snapshot)
-        frame.insert(1, "run_id", run_id)
-        frame.insert(2, "shard", args.shard or "1/1")
-        frame["days_out"] = [(depart - snapshot).days for depart in frame["depart_date"]]
-        con.register("ffs_diagnostics_frame", frame)
-        types = {"snapshot_date": "DATE", "run_id": "VARCHAR", "shard": "VARCHAR",
-                 **SEARCH_RECORD_TYPES, "days_out": "INTEGER"}
-        columns = ", ".join(f'CAST("{name}" AS {kind}) AS "{name}"' for name, kind in types.items())
-        con.execute(f"CREATE OR REPLACE TEMP TABLE ffs_diagnostics AS "
-                    f"SELECT {columns} FROM ffs_diagnostics_frame")
-        target = args.diagnostics or (str(Path(args.db).with_name(f"diagnostics-{run_id}.parquet"))
-                                      if getattr(args, "publish_hf", False) else "")
-        if target:
-            Path(target).parent.mkdir(parents=True, exist_ok=True)
-            con.execute(f"COPY ffs_diagnostics TO {storage._sql_literal(target)} (FORMAT PARQUET)")
-            logger.info("wrote %d search record(s) to %s", len(frame), target)
-        if args.push:
-            bucket = storage.require_env(storage.BUCKET_ENV)
-            storage.configure(con)
-            key = storage.snapshot_key(snapshot, run_id, prefix=storage.DIAGNOSTICS_PREFIX)
-            rows = storage.push_table(con, "ffs_diagnostics", storage.uri(bucket, key))
-            logger.info("published %d search record(s) to object storage", rows)
-        return target or None
+        con.register("ffs_diagnostics_frame",
+                     checkpoint.records_frame(report.records, snapshot, run_id, args.shard))
+        con.execute("CREATE OR REPLACE TEMP TABLE ffs_diagnostics AS "
+                    + checkpoint.typed_select(checkpoint.RECORD_COLUMNS, "ffs_diagnostics_frame"))
+        Path(args.diagnostics).parent.mkdir(parents=True, exist_ok=True)
+        con.execute(f"COPY ffs_diagnostics TO {storage._sql_literal(args.diagnostics)} (FORMAT PARQUET)")
+        logger.info("wrote %d search record(s) to %s", len(report.records), args.diagnostics)
     except Exception as error:  # diagnostics must never be what fails a run
         logger.warning("DIAGNOSTICS_NOT_SAVED: %s", type(error).__name__)
-        return None
+
+
+def run_publish_hf(args: argparse.Namespace) -> int:
+    if args.snapshot_date and not args.run_id:
+        raise ValueError("--snapshot-date needs --run-id to name the objects")
+    bucket = storage.require_env(storage.HF_BUCKET_ENV)
+    con = db.connect(args.db)
+    try:
+        if args.snapshot_date:
+            day = datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
+            (rows,) = con.execute("SELECT count(*) FROM fares WHERE snapshot_date = ?", [day]).fetchone()
+            _publish_run_hf(con, day, args.run_id, rows, args.diagnostics or None)
+            logger.info("published %d rows for %s", rows, day)
+        queued = checkpoint.Checkpoint(con, date.today(), "publish", None, checkpoint.HuggingFaceTarget(bucket))
+        if queued.pending():
+            logger.info("publishing %d queued item(s) earlier runs left unpublished", queued.pending())
+            queued.close()
+    finally:
+        con.close()
+    return 0
 
 
 def _publish_run_hf(con, day: date, run_id: str, recorded: int, diagnostics_file: Optional[str]) -> None:
-    """Upload a run's snapshot and search records through the Hugging Face login."""
+    """Upload a whole day's snapshot, and a run's search records, through the Hugging Face login."""
     bucket = storage.require_env(storage.HF_BUCKET_ENV)
     files = []
     if recorded:
@@ -676,15 +732,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.mode == "pull":
             return run_pull(args)
         if args.mode == "publish-hf":
-            con = db.connect(args.db)
-            try:
-                day = datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
-                (rows,) = con.execute("SELECT count(*) FROM fares WHERE snapshot_date = ?", [day]).fetchone()
-                _publish_run_hf(con, day, args.run_id, rows, args.diagnostics or None)
-                logger.info("published %d rows for %s", rows, day)
-            finally:
-                con.close()
-            return 0
+            return run_publish_hf(args)
         if args.mode == "runlog":
             return run_runlog(args)
         if args.mode == "audit":
@@ -702,6 +750,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             )]
         else:
             queries = queries_from(args)
+        if args.mode == "track":
+            check_publish_config(args)
     except (ValueError, OSError, storage.StorageError) as error:
         logger.error("invalid configuration: %s", error)
         return 2

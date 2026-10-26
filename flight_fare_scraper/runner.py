@@ -24,6 +24,8 @@ RETRYABLE_ERRORS = (ScraperError, PlaywrightError)
 BREAKER_AFTER = 5
 STOPPED_BREAKER = "breaker"
 STOPPED_DEADLINE = "deadline"
+# Interrupted from outside: Ctrl-C, or GitHub cancelling the job (SIGINT, then SIGTERM).
+STOPPED_INTERRUPTED = "interrupted"
 
 
 @dataclass
@@ -108,11 +110,16 @@ def run_queries(
     deadline: Optional[float] = None,
     clock: Callable[[], float] = time.time,
     pacer: Optional[Pacer] = None,
+    on_search: Optional[Callable[[SearchQuery, List[FlightResult], dict], None]] = None,
 ) -> BatchReport:
-    """Run every query, stopping early if `breaker_after` searches fail in a row or the
-    wall clock passes `deadline` (seconds since the epoch). Searches not reached are
-    listed in report.skipped and recorded, so a short run is never mistaken for a
-    complete one."""
+    """Run every query, stopping early if `breaker_after` searches fail in a row, the
+    wall clock passes `deadline` (seconds since the epoch), or the run is interrupted.
+    Searches not reached are listed in report.skipped and recorded, so a short run is
+    never mistaken for a complete one.
+
+    `on_search`, if given, gets each attempted search's results (empty if it failed)
+    and record as soon as it finishes, so they can be saved before the run ends.
+    """
     report = BatchReport()
     consecutive_failures = 0
     searched_any = False
@@ -121,6 +128,9 @@ def run_queries(
         by_site.setdefault(query.site, []).append(query)
 
     for site, site_queries in by_site.items():
+        if report.stopped == STOPPED_INTERRUPTED:
+            _skip(report, site_queries)
+            continue
         try:
             options = {} if max_pages is None else {"max_pages": max_pages}
             scraper = scraper_for(site)(headless=headless, **options)
@@ -132,8 +142,10 @@ def run_queries(
             )
             continue
 
+        next_up = 0  # first search not yet finished, for an interrupt to skip from
         try:
             for position, query in enumerate(site_queries):
+                next_up = position
                 reason = ""
                 if breaker_after and consecutive_failures >= breaker_after:
                     reason = STOPPED_BREAKER
@@ -145,9 +157,8 @@ def run_queries(
                                  len(site_queries) - position)
                 if reason:
                     report.stopped = reason
-                    for skipped in site_queries[position:]:
-                        report.skipped.append(skipped)
-                        report.records.append(search_record(skipped, None, 0, 0.0, 0, None, outcome="skipped"))
+                    _skip(report, site_queries[position:])
+                    next_up = len(site_queries)
                     break
                 if searched_any and pacer is not None:
                     pause = pacer.pause(len(site_queries) - position)
@@ -163,8 +174,13 @@ def run_queries(
                 started = time.monotonic()
                 clicks_before = getattr(scraper, "in_page_clicks", 0)
                 error: Optional[BaseException] = None
+                results: List[FlightResult] = []
+                interrupted = False
                 try:
                     results = search_with_retry(scraper, query, delays, sleep, record=attempt_info)
+                except KeyboardInterrupt:
+                    interrupted = True  # not a finished search: it is skipped, not recorded
+                    raise
                 except Exception as caught:
                     error = caught
                     if not isinstance(caught, RETRYABLE_ERRORS):
@@ -173,12 +189,16 @@ def run_queries(
                         query, f"{type(caught).__name__}: {caught}", bot_blocked=isinstance(caught, BotBlockedError),
                     ))
                 finally:
-                    if pacer is not None:
-                        pacer.observe(time.monotonic() - started)
-                    report.records.append(search_record(
-                        query, scraper, attempt_info.get("attempts", 0), time.monotonic() - started,
-                        getattr(scraper, "in_page_clicks", 0) - clicks_before, error,
-                    ))
+                    if not interrupted:
+                        if pacer is not None:
+                            pacer.observe(time.monotonic() - started)
+                        report.records.append(search_record(
+                            query, scraper, attempt_info.get("attempts", 0), time.monotonic() - started,
+                            getattr(scraper, "in_page_clicks", 0) - clicks_before, error,
+                        ))
+                next_up = position + 1
+                if on_search is not None:
+                    on_search(query, results if error is None else [], report.records[-1])
                 if error is not None:
                     consecutive_failures += 1
                     continue
@@ -186,6 +206,10 @@ def run_queries(
                 logger.info("%s: %d results", redact.label(query), len(results))
                 report.results.extend(results)
                 report.succeeded.append(query)
+        except KeyboardInterrupt:
+            logger.error("INTERRUPTED: stopping before the %d search(es) left", len(site_queries) - next_up)
+            report.stopped = STOPPED_INTERRUPTED
+            _skip(report, site_queries[next_up:])
         finally:
             report.truncated += getattr(scraper, "truncated_searches", 0)
             report.in_page_clicks += getattr(scraper, "in_page_clicks", 0)
@@ -193,6 +217,12 @@ def run_queries(
 
     _log_summary(len(queries), report)
     return report
+
+
+def _skip(report: BatchReport, queries: Sequence[SearchQuery]) -> None:
+    for skipped in queries:
+        report.skipped.append(skipped)
+        report.records.append(search_record(skipped, None, 0, 0.0, 0, None, outcome="skipped"))
 
 
 # The shape of a search record, with fixed types. Inferred types drift between files --

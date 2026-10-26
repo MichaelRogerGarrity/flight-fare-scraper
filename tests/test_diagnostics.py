@@ -98,10 +98,13 @@ def test_diagnostics_have_a_fixed_schema_even_when_a_column_is_all_empty(tmp_pat
     assert rows == [("2/6", "run-1", 31), ("2/6", "run-1", 45)]
 
 
-def test_a_diagnostics_failure_never_fails_the_run(caplog, monkeypatch):
+def test_a_diagnostics_failure_never_fails_the_run(caplog, monkeypatch, tmp_path):
     con = duckdb.connect()
-    args = Namespace(diagnostics="", push=True, shard="0/6")
-    monkeypatch.delenv("FFS_S3_BUCKET", raising=False)  # publishing will fail
+    args = Namespace(diagnostics=str(tmp_path / "diag.parquet"), push=False, shard="0/6")
+
+    def broken(*_args):
+        raise RuntimeError("MIA-TYO 2026-11-27: disk full")
+    monkeypatch.setattr(cli.checkpoint, "records_frame", broken)
     with caplog.at_level(logging.WARNING, logger="flight_fare_scraper"):
         cli._write_diagnostics(con, _report_with_records(), args, date(2026, 10, 13), "run-1")
     messages = [r.getMessage() for r in caplog.records]

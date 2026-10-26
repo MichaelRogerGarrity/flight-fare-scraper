@@ -276,6 +276,29 @@ implausible prices, durations and timestamps. It checks coverage over the last 7
 only: a short day stays short forever, so checking all history would fail every audit
 after one bad day. With a weekly audit, a 7-day window checks each day exactly once.
 
+### Saving as it goes
+
+A run doesn't wait for its last search to save anything. Each search's fares go into
+the local database as soon as it finishes, and with `--push` or `--publish-hf` they go
+up in parts: every 25 searches or 30 minutes, whichever comes first
+(`--checkpoint-every`, `--checkpoint-minutes`), each part one more object in the day's
+partition beside the run's search records. So a run that dies -- a cancelled or
+timed-out job, a lost runner, a machine switched off -- loses at most the searches since
+its last part.
+
+- **Cancelled jobs.** GitHub cancels with SIGINT, then SIGTERM. Either stops the run the
+  way its deadline does: the search in flight is dropped, the rest are recorded as
+  skipped with `stopped: interrupted`, and what was saved goes up as a final part.
+- **Nothing published twice.** What a run saved but never published waits in a queue in
+  the same database, and goes up with the next run's first part. Parts are named after
+  the run that saved them and the first item in them, so items published again after a
+  crash overwrite their own object instead of duplicating it.
+- **Resuming.** `track --resume` skips searches that already have fares in `--db` for
+  the snapshot date, so a run cut short can be started again and pick up where it
+  stopped. Searches that failed are tried again.
+- **Rows.** A row's `snapshot_datetime` is when its own search finished, not when the
+  run ended.
+
 ### Running from a home machine
 
 When the site refuses GitHub's runners, the same run can go from a home connection.
@@ -292,18 +315,26 @@ start is missed" so it still runs on days the machine is off at the scheduled ti
 late start just shifts the day's run: the snapshot date is pinned to the day the run
 started, and no search starts more than 20 hours in (`-DeadlineHours`).
 
+The task also runs at each logon. The script runs with `--resume`, so after a shutdown
+mid-run the day picks up where it stopped. A logon after the day is finished exits
+right away, retrying only searches that failed, and a logon before the scheduled
+start (`-NotBefore`, 09:00) waits for it.
+
 ```powershell
 $repo = "C:\path\to\flight-fare-scraper"
 $action = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $repo `
     -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$repo\scripts\run-home.ps1`" -Bucket <namespace>/<bucket>"
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -RunOnlyIfNetworkAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 22) -MultipleInstances IgnoreNew
+$logon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+$logon.Delay = "PT2M"
 Register-ScheduledTask -TaskName "Flight fare tracking (home)" -Action $action `
-    -Trigger (New-ScheduledTaskTrigger -Daily -At 9:00AM) -Settings $settings
+    -Trigger @((New-ScheduledTaskTrigger -Daily -At 9:00AM), $logon) -Settings $settings
 ```
 
-`publish-hf` uploads an earlier local run that wasn't published at the time:
-`publish-hf --db home-runs/home.duckdb --snapshot-date YYYY-MM-DD --run-id <id> [--diagnostics FILE]`.
+`publish-hf --db home-runs/home.duckdb` uploads whatever earlier runs left queued. With
+`--snapshot-date YYYY-MM-DD --run-id <id> [--diagnostics FILE]` it also uploads that
+whole day, for a database recorded before the queue existed.
 
 ## Keeping the public log clean
 
