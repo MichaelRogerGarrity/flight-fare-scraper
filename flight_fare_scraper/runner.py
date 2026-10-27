@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 RETRY_DELAYS_S = (15, 60)  # wait before attempts 2 and 3
 SEARCH_JITTER_S = (5.0, 20.0)  # random pause between consecutive searches
 BOT_BLOCK_DELAY_MULTIPLIER = 3
+MIN_GAP_JITTER = (1.0, 1.25)  # the hourly cap's gap is a floor; each wait lands a random bit above it
 RETRYABLE_ERRORS = (ScraperError, PlaywrightError)
 # Consecutive failed searches after which a batch stops. At the ~1% background failure
 # rate, five in a row by chance is a one-in-ten-billion event; it is what a block looks
@@ -120,6 +121,7 @@ def run_queries(
     clock: Callable[[], float] = time.time,
     pacer: Optional[Pacer] = None,
     on_search: Optional[Callable[[SearchQuery, List[FlightResult], dict], None]] = None,
+    min_gap_s: Optional[float] = None,
 ) -> BatchReport:
     """Run every query, stopping early if `breaker_after` searches fail in a row, the
     wall clock passes `deadline` (seconds since the epoch), or the run is interrupted.
@@ -128,11 +130,15 @@ def run_queries(
 
     `on_search`, if given, gets each attempted search's results (empty if it failed)
     and record as soon as it finishes, so they can be saved before the run ends.
+
+    `min_gap_s`, if given, is the least time between the starts of two searches: a cap
+    on searches per hour, whatever pacing would otherwise allow.
     """
     report = BatchReport()
     consecutive_failures = 0
     challenged = False  # a CAPTCHA was seen: stop before the next search
     searched_any = False
+    last_start: Optional[float] = None
     by_site: Dict[str, List[SearchQuery]] = {}
     for query in queries:
         by_site.setdefault(query.site, []).append(query)
@@ -174,15 +180,21 @@ def run_queries(
                     _skip(report, site_queries[position:])
                     next_up = len(site_queries)
                     break
+                pause = 0.0
                 if searched_any and pacer is not None:
                     pause = pacer.pause(len(site_queries) - position)
-                    logger.debug("pacing: pausing %.0fs before the next search", pause)
-                    sleep(pause)
                 elif searched_any and search_jitter_s:
                     pause = random.uniform(*search_jitter_s)
-                    logger.debug("pausing %.1fs before the next search", pause)
+                if min_gap_s and last_start is not None:
+                    # The hourly cap holds even when pacing wants to catch up: a run that
+                    # falls behind ends at its deadline rather than speeding up.
+                    pause = max(pause, min_gap_s * random.uniform(*MIN_GAP_JITTER) - (clock() - last_start))
+                if pause > 0:
+                    logger.debug("pausing %.0fs before the next search", pause)
                     sleep(pause)
                 searched_any = True
+                if min_gap_s:
+                    last_start = clock()
                 logger.info("searching %s: %s", site, redact.label(query))
                 attempt_info: dict = {}
                 started = time.monotonic()

@@ -7,6 +7,7 @@ import signal
 import sys
 import tempfile
 import time
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -15,7 +16,7 @@ from typing import List, Optional, Tuple
 import duckdb
 import pandas as pd
 
-from . import audit, budget, checkpoint, db, pacing, schedule, storage
+from . import audit, budget, checkpoint, db, load, pacing, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
@@ -81,20 +82,54 @@ def parse_shard(text: Optional[str]) -> Optional[Tuple[int, int]]:
     return index, count
 
 
+def spec_text(args: argparse.Namespace) -> str:
+    """The route spec's JSON, from --spec or the environment variable named by --spec-env."""
+    if args.spec:
+        return Path(args.spec).read_text(encoding="utf-8")
+    text = os.environ.get(args.spec_env, "")
+    if not text.strip():
+        raise ValueError(f"environment variable {args.spec_env} is empty or unset")
+    return text
+
+
+def prepare_load(args: argparse.Namespace) -> bool:
+    """Read the spec's load settings and, with --load-state, the ramp level for this run.
+
+    Returns True if the run must not start: the site refused one recently enough that
+    its cooldown hasn't ended.
+    """
+    args.load_settings = load.parse(spec_text(args)) if not args.config else load.Settings()
+    args.ramp_level, args.load_state_obj = None, None
+    if not args.load_state:
+        return False
+    state = load.State.read(args.load_state)
+    now = datetime.now()
+    until = load.cooldown_until(args.load_settings, state, now)
+    if until:
+        logger.warning("COOLDOWN: the site refused a run (%s) at %s; no run starts before %s",
+                       state.refusal, state.refused_at, until.isoformat(timespec="minutes"))
+        return True
+    args.ramp_level = load.current_level(args.load_settings, state, now)
+    if args.ramp_level is not None:
+        logger.info("load: ramp level %d of %d (%s), %d of %d clean day(s) toward the next",
+                    state.level, len(args.load_settings.levels) - 1, args.ramp_level.name,
+                    state.clean_days, args.load_settings.clean_days_per_step)
+    state.write(args.load_state)
+    args.load_state_obj = state
+    return False
+
+
 def queries_from(args: argparse.Namespace) -> List[SearchQuery]:
     """Build the search list from a CSV config, a route spec file, or a spec in the environment."""
     if args.config:
         return load_queries(args.config)
 
-    if args.spec:
-        text = Path(args.spec).read_text(encoding="utf-8")
-    else:
-        text = os.environ.get(args.spec_env, "")
-        if not text.strip():
-            raise ValueError(f"environment variable {args.spec_env} is empty or unset")
-
     today = datetime.strptime(args.today, "%Y-%m-%d").date() if args.today else date.today()
-    queries = schedule.due_today(schedule.parse_spec(text), today)
+    spec = schedule.parse_spec(spec_text(args))
+    level = getattr(args, "ramp_level", None)
+    if level is not None:  # the load ramp's current level stands in for the spec's own tiers
+        spec = replace(spec, tiers=level.tiers)
+    queries = schedule.due_today(spec, today)
     shard = parse_shard(args.shard)
     if shard:
         queries = schedule.shard(queries, *shard)
@@ -177,6 +212,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     track.add_argument("--alert-dir", dest="alert_dir", default="",
                        help="If the site refuses this run (a CAPTCHA, bot pages, or the breaker), leave an "
                             "alert file here for `alerts` to pick up and a notifier to forward")
+    track.add_argument("--load-state", dest="load_state", default="",
+                       help="JSON file remembering the load ramp's level and the last refusal between runs, "
+                            "which turns on the spec's cooldown and ramp (see load.py). Without it only "
+                            "max_searches_per_hour applies.")
     track.add_argument("--resume", action="store_true",
                        help="Skip searches that already have fares in --db for this snapshot date, so a "
                             "run cut short can be started again and pick up where it stopped")
@@ -236,6 +275,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
                                help="Searches per day not to exceed (default 400). Exits 1 if any day does.")
     budget_parser.add_argument("--target-hours", dest="target_hours", type=float, default=14.0,
                                help="Pacing target to report spacing for (default 14, as the workflow uses)")
+    budget_parser.add_argument("--level", default="",
+                               help="Simulate this load ramp level (name or index) instead of the spec's own tiers")
     budget_parser.add_argument("--costs", default="",
                                help="Per-search records (Parquet glob) to calibrate each route's cost; "
                                     "defaults to costs measured in October 2026")
@@ -265,6 +306,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                          help="Also upload this whole YYYY-MM-DD, for a file recorded without a publish queue")
     publish.add_argument("--run-id", dest="run_id", default="", help="Name for that day's objects")
     publish.add_argument("--diagnostics", default="", help="That run's search-record Parquet file, if any")
+
+    status = sub.add_parser("load-status", help="Show the load ramp's level, clean days and any cooldown")
+    status_source = status.add_mutually_exclusive_group(required=True)
+    status_source.add_argument("--spec", help=SPEC_HELP)
+    status_source.add_argument("--spec-env", dest="spec_env", help=SPEC_ENV_HELP)
+    status.add_argument("--load-state", dest="load_state", required=True, help="The file given to track --load-state")
+    status.add_argument("--log-file", default="", help=LOG_FILE_HELP)
 
     alerts = sub.add_parser("alerts", help="Print pending alerts from `track --alert-dir`, once each, and "
                                            "file them as sent")
@@ -355,6 +403,9 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
     day = (datetime.strptime(args.snapshot_date, "%Y-%m-%d").date()
            if args.snapshot_date else started_at.date())
     run_id = args.run_id or started_at.strftime("%Y%m%dT%H%M%S")
+    settings = getattr(args, "load_settings", None) or load.Settings()
+    if settings.max_searches_per_hour:
+        logger.info("load: at most %g searches an hour", settings.max_searches_per_hour)
     # GitHub cancels a job with SIGINT, then SIGTERM: treat both as an interrupt, which
     # stops the run like its deadline would and still publishes what it saved.
     previous_handlers = {signal.SIGINT: signal.getsignal(signal.SIGINT),
@@ -389,7 +440,7 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                             len(queries), args.searches_after, args.pace_until, pacer.mean_pause(len(queries)))
             report = run_queries(queries, headless=not args.headed, max_pages=args.max_pages,
                                  breaker_after=args.breaker_after or None, deadline=deadline, pacer=pacer,
-                                 on_search=saver.add)
+                                 on_search=saver.add, min_gap_s=settings.min_gap_s)
         else:
             logger.info("every search due today is already recorded")
         # Searching is over. GitHub follows its SIGINT with a SIGTERM a few seconds later;
@@ -418,6 +469,11 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                     _write_alert(args.alert_dir, report, queries, run_id, day)
                 except OSError as error:
                     logger.warning("ALERT_NOT_SAVED: %s", type(error).__name__)
+            state = getattr(args, "load_state_obj", None)
+            if state is not None:
+                load.record(settings, state, day, report.stopped,
+                            refused=report.stopped in (*BLOCKED_STOPS, STOPPED_UPSTREAM), now=datetime.now())
+                state.write(args.load_state)
     if report.stopped:
         return 1  # a run that stopped early must not look like a good day
     return _track_exit_code(report, args.tolerate_failures)
@@ -737,11 +793,48 @@ def run_budget(args: argparse.Namespace) -> int:
     if not text.strip():
         raise ValueError(f"environment variable {args.spec_env} is empty or unset")
     spec = schedule.parse_spec(text)
+    settings = load.parse(text)
     start = datetime.strptime(args.start, "%Y-%m-%d").date() if args.start else date.today()
     costs = budget.load_costs(args.costs) if args.costs else None
+    if args.level:
+        matches = [lv for i, lv in enumerate(settings.levels) if args.level in (lv.name, str(i))]
+        if not matches:
+            raise ValueError(f"no ramp level named {args.level!r}; the spec has "
+                             f"{[lv.name for lv in settings.levels] or 'none'}")
+        spec = replace(spec, tiers=matches[0].tiers)
     report = budget.simulate(spec, start, args.days, costs)
     print(budget.render(report, args.limit, args.target_hours))
+    if settings.max_searches_per_hour:
+        hours = report.worst.searches / settings.max_searches_per_hour
+        print(f"hourly cap     {settings.max_searches_per_hour:g}/h: the busiest day needs at least {hours:.1f}h")
+    if settings.levels and not args.level:
+        print("\nramp levels (budget --level NAME for one in full):")
+        for index, level in enumerate(settings.levels):
+            each = budget.simulate(replace(spec, tiers=level.tiers), start, min(args.days, 182), costs)
+            print(f"  {index}  {level.name:<10} searches/day average {each.average('searches'):4.0f}  "
+                  f"worst {each.worst.searches:4d}  stuck on one weekday: {each.stuck_on_one_weekday}")
     return 1 if report.over(args.limit) else 0
+
+
+def run_load_status(args: argparse.Namespace) -> int:
+    """Where the load ramp stands: level, clean days banked, and any cooldown."""
+    settings = load.parse(spec_text(args))
+    state = load.State.read(args.load_state)
+    now = datetime.now()
+    until = load.cooldown_until(settings, state, now)
+    if settings.levels:
+        level = settings.levels[min(state.level, len(settings.levels) - 1)]
+        print(f"ramp level {min(state.level, len(settings.levels) - 1)} of {len(settings.levels) - 1} ({level.name}); "
+              f"{state.clean_days} of {settings.clean_days_per_step} clean day(s) toward the next")
+    else:
+        print("no ramp levels in the spec: runs use its own tiers")
+    print(f"hourly cap: {settings.max_searches_per_hour or 'none'}")
+    if state.refused_at:
+        print(f"last refusal: {state.refusal} at {state.refused_at}")
+    print(f"cooling down until {until.isoformat(timespec='minutes')}" if until else "not cooling down")
+    for line in state.history[-5:]:
+        print(f"  {line}")
+    return 0
 
 
 def run_audit(args: argparse.Namespace) -> int:
@@ -786,8 +879,12 @@ def run_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+EXIT_COOLING_DOWN = 3
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    """Exit codes: 0 all searches succeeded, 1 some failed (see logs), 2 invalid configuration."""
+    """Exit codes: 0 all searches succeeded, 1 some failed (see logs), 2 invalid configuration,
+    3 (track --load-state) cooling down after a refusal, so nothing was searched."""
     args = build_arg_parser().parse_args(argv)
     configure_logging(getattr(args, "verbose", False), getattr(args, "log_file", None))
 
@@ -798,6 +895,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_publish_hf(args)
         if args.mode == "alerts":
             return run_alerts(args)
+        if args.mode == "load-status":
+            return run_load_status(args)
         if args.mode == "runlog":
             return run_runlog(args)
         if args.mode == "audit":
@@ -814,9 +913,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 site=args.site,
             )]
         else:
+            if args.mode == "track":
+                check_publish_config(args)
+                if prepare_load(args):  # before the queries: the ramp picks the tiers
+                    return EXIT_COOLING_DOWN
             queries = queries_from(args)
-        if args.mode == "track":
-            check_publish_config(args)
     except (ValueError, OSError, storage.StorageError) as error:
         logger.error("invalid configuration: %s", error)
         return 2

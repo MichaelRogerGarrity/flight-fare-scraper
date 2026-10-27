@@ -24,6 +24,11 @@ param(
     [string]$NotBefore = "09:00",
     # Result pages per pass, as the scheduled workflow fetches; the daily budget assumes it.
     [int]$MaxPages = 5,
+    # While cooling down after the site refused a run, check again this often, and stop
+    # checking at this time of day. The load limits themselves -- searches an hour,
+    # cooldown, ramp -- are in the spec's "load" section, not here.
+    [int]$CooldownCheckMinutes = 30,
+    [string]$GiveUpAt = "22:00",
     [string]$Python = "python"
 )
 
@@ -35,10 +40,14 @@ if (-not $Bucket) { throw "No bucket: pass -Bucket namespace/name or set FFS_HF_
 if (-not (Test-Path $Spec)) { throw "Route spec not found: $Spec" }
 $env:FFS_HF_BUCKET = $Bucket
 
-$now = Get-Date
-if ($now.TimeOfDay -lt [timespan]::Parse($NotBefore)) { exit 0 }
-$runId = "home-" + $now.ToUniversalTime().ToString("yyyyMMddTHHmmss")
+$started = Get-Date
+if ($started.TimeOfDay -lt [timespan]::Parse($NotBefore)) { exit 0 }
+$giveUp = $started.Date + [timespan]::Parse($GiveUpAt)
 $utc = { param($t) $t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") + "+00:00" }
+
+while ($true) {
+$now = Get-Date
+$runId = "home-" + $now.ToUniversalTime().ToString("yyyyMMddTHHmmss")
 
 # One process does the whole day here, so pacing has no later shards to leave room for.
 # The snapshot date is pinned to the day the run started, even if it finishes after midnight.
@@ -59,6 +68,8 @@ $arguments = @(
     # A CAPTCHA, bot pages or the breaker leave an alert here; a Claude scheduled task
     # forwards it to the phone (see the README).
     "--alert-dir", "home-runs/alerts",
+    # The load ramp's level and the last refusal, kept between runs.
+    "--load-state", "home-runs/load-state.json",
     "--log-file", "home-runs/home.log"
 ) | ForEach-Object { "`"$_`"" }
 
@@ -71,4 +82,11 @@ $arguments = @(
 #       % { taskkill /PID $_.ProcessId /T /F }
 # --resume picks up where it stopped next time.
 & cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$runId.txt`" 2>&1`""
-exit $LASTEXITCODE
+$code = $LASTEXITCODE
+
+# 3: cooling down after a refusal, nothing searched. The cooldown may end later today --
+# the 9:00 start already gone -- so wait and ask again rather than lose the day.
+if ($code -ne 3) { exit $code }
+if ((Get-Date).AddMinutes($CooldownCheckMinutes) -gt $giveUp) { exit 0 }
+Start-Sleep -Seconds ($CooldownCheckMinutes * 60)
+}

@@ -308,6 +308,34 @@ its last part.
 - **Rows.** A row's `snapshot_datetime` is when its own search finished, not when the
   run ended.
 
+### Load limits
+
+On 2026-10-26 Kayak answered the home connection with CAPTCHAs after ~185 searches in
+21 hours, the last 119 at ~38 an hour -- while an overnight run that sent more page
+requests per hour, but started fewer searches, was never challenged. What it reacts to
+looks like searches, not pages. Three controls, all in the spec's optional `load` section
+(`flight_fare_scraper/load.py` explains each; the example spec has one):
+
+| setting | what it does |
+| --- | --- |
+| `max_searches_per_hour` | Least time between two searches' starts, with up to 25% random on top. Pacing can spread a run out but never squeeze it past this; a run that falls behind ends at its deadline instead of speeding up. Applies to every run. |
+| `cooldown_hours` | After a CAPTCHA or the breaker, no run starts for this long (exit code 3). The first search after it is the probe: a CAPTCHA there stops the run and starts another cooldown. |
+| `ramp.levels` | Schedules from lightest to heaviest, each a full `tiers` list used in place of the spec's own. |
+| `ramp.clean_days_per_step` | Days that finish without a refusal before the next run moves up a level. A day resumed after a shutdown counts once; a day cut short by its deadline doesn't count. |
+| `ramp.steps_down_on_block` | Levels to drop after a refusal, which also starts the count again. |
+
+Cooldown and ramp remember where they are in a small state file, `track --load-state`
+(`home-runs/load-state.json` on the home machine); without one only the hourly cap
+applies. `load-status --spec ... --load-state ...` shows the level, clean days banked and
+any cooldown. `budget` lists every level's load, and `budget --level NAME` simulates one
+in full -- check a new level there before adding it, for the busiest day and for windows
+stuck on one weekday.
+
+The hourly cap and the ramp interact: at 15 an hour, a level averaging 150 searches
+needs about 10 hours, so a level that can't finish in a day ends at its deadline, never
+banks a clean day, and the ramp stays below it. Raise the cap or allow longer days to go
+past that.
+
 ### Running from a home machine
 
 When the site refuses GitHub's runners, the same run can go from a home connection.
@@ -323,6 +351,9 @@ A daily Windows scheduled task runs it, with "run as soon as possible after a sc
 start is missed" so it still runs on days the machine is off at the scheduled time. A
 late start just shifts the day's run: the snapshot date is pinned to the day the run
 started, and no search starts more than 20 hours in (`-DeadlineHours`).
+
+While a cooldown is on, the script checks again every 30 minutes (`-CooldownCheckMinutes`)
+until 22:00 (`-GiveUpAt`), so a cooldown ending mid-morning still gets that day's run.
 
 The task also runs at each logon. The script runs with `--resume`, so after a shutdown
 mid-run the day picks up where it stopped. A logon after the day is finished exits

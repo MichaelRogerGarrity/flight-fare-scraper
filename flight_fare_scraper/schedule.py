@@ -106,9 +106,23 @@ def parse_spec(text: str) -> Spec:
             base_weekday=_weekday(entry["base_weekday"], where) if "base_weekday" in entry else None,
         ))
 
+    return Spec(
+        routes=tuple(routes),
+        tiers=parse_tiers(raw.get("tiers", DEFAULT_TIERS), "route spec: tiers"),
+        base_weekday=_weekday(raw.get("base_weekday", FRIDAY), "route spec"),
+        horizon_days=int(raw.get("horizon_days", DEFAULT_HORIZON_DAYS)),
+        min_days_out=int(raw.get("min_days_out", 1)),
+        min_nights=int(raw.get("min_nights", 1)),
+    )
+
+
+def parse_tiers(entries: Sequence[Any], where_list: str) -> Tuple[Tier, ...]:
+    """A list of tier objects, validated and sorted nearest first."""
+    if not isinstance(entries, (list, tuple)):
+        raise ValueError(f"{where_list} must be a list")
     tiers = []
-    for index, entry in enumerate(raw.get("tiers", DEFAULT_TIERS)):
-        where = f"route spec: tiers[{index}]"
+    for index, entry in enumerate(entries):
+        where = f"{where_list}[{index}]"
         if not isinstance(entry, dict):
             raise ValueError(f"{where} must be an object")
         every = int(_require(entry, "every_days", where))
@@ -132,17 +146,9 @@ def parse_spec(text: str) -> Spec:
             combos_per_visit=combos,
         ))
     if not tiers:
-        raise ValueError("route spec: 'tiers' must not be empty")
+        raise ValueError(f"{where_list} must not be empty")
     tiers.sort(key=lambda tier: tier.max_days_out)
-
-    return Spec(
-        routes=tuple(routes),
-        tiers=tuple(tiers),
-        base_weekday=_weekday(raw.get("base_weekday", FRIDAY), "route spec"),
-        horizon_days=int(raw.get("horizon_days", DEFAULT_HORIZON_DAYS)),
-        min_days_out=int(raw.get("min_days_out", 1)),
-        min_nights=int(raw.get("min_nights", 1)),
-    )
+    return tuple(tiers)
 
 
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")

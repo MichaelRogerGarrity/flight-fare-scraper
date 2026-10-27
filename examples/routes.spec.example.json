@@ -7,7 +7,8 @@
     "min_nights drops trips shorter than this; the default of 1 excludes same-day round trips.",
     "A route can set its own base_weekday (0-6, or a name like \"Tuesday\") to track a second trip shape, here a Tuesday-to-Wednesday fortnight beside the Friday-to-Sunday one.",
     "combos_per_visit searches the base trip plus a rotating few of the other date combinations each visit.",
-    "every_days may not be a multiple of 7, or each window would always be checked on the same weekday."
+    "every_days may not be a multiple of 7, or each window would always be checked on the same weekday.",
+    "load (optional) limits how hard runs lean on the site: max_searches_per_hour caps search starts; with track --load-state, cooldown_hours holds runs off after a CAPTCHA or the breaker, and ramp moves between levels -- lightest first, each a full tiers list used in place of the spec's own -- up one after clean_days_per_step clean days, down steps_down_on_block after a refusal. `cli budget` shows every level's load."
   ],
   "base_weekday": 4,
   "horizon_days": 365,
@@ -42,6 +43,112 @@
       ]
     }
   ],
+  "load": {
+    "max_searches_per_hour": 15,
+    "cooldown_hours": 36,
+    "ramp": {
+      "clean_days_per_step": 7,
+      "steps_down_on_block": 1,
+      "levels": [
+        {
+          "name": "light",
+          "tiers": [
+            {
+              "max_days_out": 30,
+              "every_days": 1,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 1
+            },
+            {
+              "max_days_out": 90,
+              "every_days": 5,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 1
+            },
+            {
+              "max_days_out": 365,
+              "every_days": 9,
+              "day_offsets": [
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "medium",
+          "tiers": [
+            {
+              "max_days_out": 30,
+              "every_days": 1,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 1
+            },
+            {
+              "max_days_out": 90,
+              "every_days": 5,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 3
+            },
+            {
+              "max_days_out": 365,
+              "every_days": 6,
+              "day_offsets": [
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "full",
+          "tiers": [
+            {
+              "max_days_out": 30,
+              "every_days": 1,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 3
+            },
+            {
+              "max_days_out": 90,
+              "every_days": 3,
+              "day_offsets": [
+                -1,
+                0,
+                1
+              ],
+              "combos_per_visit": 3
+            },
+            {
+              "max_days_out": 365,
+              "every_days": 6,
+              "day_offsets": [
+                0
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
   "routes": [
     {
       "origin": "MIA",
