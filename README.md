@@ -428,11 +428,46 @@ gateway doesn't serve.
 itinerary, cheapest nonstop versus cheapest under 18 hours, all-in cost with bag fees, and
 whether Kayak's own predictions held up.
 
-## Adding another site
+## Sources
 
-Implement `BaseScraper` in `flight_fare_scraper/scrapers/`, register it, and set `site` on
-a query. `site` is part of the dedup key, so two scrapers can track the same route on the
-same day without overwriting each other.
+A route (or a CSV row) picks its source with `site`; the default is `kayak`. `site` is
+stored on every row and is part of the dedup key, so two sources can track the same
+route on the same day without overwriting each other.
+
+| `site` | what it is | key (environment) | free allowance | requests per round trip |
+| --- | --- | --- | --- | --- |
+| `kayak` | Kayak, through a browser | -- | -- | ~6 page loads |
+| `serpapi` | [SerpApi](https://serpapi.com/google-flights-api): Google Flights | `FFS_SERPAPI_KEY` | 250 a month | 1 + outbound options |
+| `searchapi` | [SearchApi](https://www.searchapi.io/docs/google-flights-api): Google Flights | `FFS_SEARCHAPI_KEY` | 100 to try it | 1 + outbound options |
+| `flightpowers` | [FlightPowers](https://flightpowers.com/flights-api): Google Flights | `FFS_FLIGHTPOWERS_KEY` (RapidAPI) | 10 a month | 1 per airport pair |
+| `fli` | Google Flights read directly with [`fli`](https://github.com/punitarani/fli) (`pip install flights`) | -- | free | 1 + outbound options |
+
+"Outbound options" (`FFS_GOOGLE_OUTBOUND_OPTIONS`, default 1) is how many outbound
+flights are paired with their returns. Google prices each outbound with its cheapest
+return, so 1 already finds the cheapest round trip.
+
+Google Flights gives ~30 curated itineraries per search rather than Kayak's thousand
+seller listings, and no per-seller prices or bag fees, so those columns stay empty and
+`MIN(price)` is the figure to compare across sources. `price_prediction` holds Google's
+own low/typical/high where Kayak's holds BUY/WAIT. FlightPowers answers with a summary
+per leg -- airline, stops, duration, times -- and no flight numbers or connections.
+
+The paid APIs meter themselves, so the hourly cap in `load` doesn't apply to them. A key
+that is missing, rejected or out of quota skips the rest of that source's searches for
+the run, with no retries, and doesn't count as the site refusing us. `fli` asks Google
+from this machine, so the cap applies to it as to Kayak, and a block there is a block on
+this connection's Google access: keep its share small.
+
+None of the API sources has been run against the live service yet; their parsers follow
+each provider's documented response, in `tests/test_sources.py`.
+
+### Adding another source
+
+A Google Flights source subclasses `ApiScraper` (`scrapers/api.py`: key, requests, HTTP
+errors) or `ItinerarySource` (`scrapers/google_flights.py`) and only parses its response
+into `Itinerary` objects; the conversion to rows, the stops and time filters, and the
+per-search stats are shared. Anything else implements `BaseScraper`. Register it in
+`scrapers/__init__.py`.
 
 ## Tests
 

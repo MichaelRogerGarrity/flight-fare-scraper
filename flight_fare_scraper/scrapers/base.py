@@ -20,6 +20,13 @@ class CaptchaError(BotBlockedError):
     """
 
 
+class SourceUnavailableError(ScraperError):
+    """The source can't take searches right now: no key, a rejected key, or its quota
+    used up. Retrying won't help, and neither will the rest of this run's searches on
+    it, so the runner skips them -- without counting it as the site refusing us.
+    """
+
+
 class SearchTimeoutError(ScraperError):
     """Results never finished loading in time."""
 
@@ -36,6 +43,9 @@ class BaseScraper(ABC):
     """
 
     name: str
+    # Whether this source reads a site directly, so the run's load limits (the hourly
+    # cap) apply to it. A paid API whose own quota is the limit sets this False.
+    polite: bool = True
     # Searches that returned only their first pages because a later one wouldn't load.
     truncated_searches: int = 0
     # Pages reached by clicking from inside the page because the button was covered.

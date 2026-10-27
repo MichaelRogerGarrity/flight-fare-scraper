@@ -67,7 +67,7 @@ class FlightResult:
     free_cancellation: Optional[bool] = None
     virtual_interline: Optional[bool] = None  # stitched from airlines that don't interline, i.e. separate tickets
     self_transfer_protection: Optional[bool] = None  # the seller offers protection if a self-transfer connection is missed
-    price_prediction: Optional[str] = None  # Kayak's own buy/wait call for this search
+    price_prediction: Optional[str] = None  # the site's own call: Kayak's BUY/WAIT, Google's low/typical/high
     price_prediction_change: Optional[float] = None
     price_prediction_days: Optional[int] = None  # Kayak's daysHorizon for that call
     booking_url: Optional[str] = None  # session-scoped: exported to CSV/JSON/XLSX, never stored in the DB

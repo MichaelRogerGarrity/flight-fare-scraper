@@ -10,7 +10,7 @@ from . import redact
 from .pacing import Pacer
 from .models import FlightResult, SearchQuery
 from .scrapers import get_scraper_class
-from .scrapers.base import BaseScraper, BotBlockedError, CaptchaError, ScraperError
+from .scrapers.base import BaseScraper, BotBlockedError, CaptchaError, ScraperError, SourceUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,8 @@ def search_with_retry(
                 logger.error("CAPTCHA %s: attempt %d/%d answered with a CAPTCHA; not retrying",
                              redact.label(query), attempt, attempts)
                 raise
+            if isinstance(error, SourceUnavailableError):
+                raise  # no key, a rejected key or no quota: no attempt will do better
             blocked = isinstance(error, BotBlockedError)
             tag = "BOT_BLOCKED" if blocked else "SEARCH_FAILED"
             if attempt == attempts:
@@ -159,9 +161,17 @@ def run_queries(
             continue
 
         next_up = 0  # first search not yet finished, for an interrupt to skip from
+        unavailable = False  # the source can't take searches: skip the rest of its own
+        polite = getattr(scraper, "polite", True)  # the hourly cap is for sites read directly
         try:
             for position, query in enumerate(site_queries):
                 next_up = position
+                if unavailable:
+                    logger.error("SOURCE_UNAVAILABLE: %s can't take searches; skipping its %d left",
+                                 site, len(site_queries) - position)
+                    _skip(report, site_queries[position:])
+                    next_up = len(site_queries)
+                    break
                 reason = ""
                 if challenged:
                     reason = STOPPED_CAPTCHA
@@ -185,7 +195,7 @@ def run_queries(
                     pause = pacer.pause(len(site_queries) - position)
                 elif searched_any and search_jitter_s:
                     pause = random.uniform(*search_jitter_s)
-                if min_gap_s and last_start is not None:
+                if min_gap_s and polite and last_start is not None:
                     # The hourly cap holds even when pacing wants to catch up: a run that
                     # falls behind ends at its deadline rather than speeding up.
                     pause = max(pause, min_gap_s * random.uniform(*MIN_GAP_JITTER) - (clock() - last_start))
@@ -228,6 +238,9 @@ def run_queries(
                 if error is not None:
                     consecutive_failures += 1
                     challenged = challenged or isinstance(error, CaptchaError)
+                    if isinstance(error, SourceUnavailableError):
+                        unavailable = True
+                        consecutive_failures -= 1  # our setup, not the site refusing us
                     continue
                 consecutive_failures = 0
                 logger.info("%s: %d results", redact.label(query), len(results))

@@ -18,6 +18,7 @@ from .. import redact
 from ..models import FlightResult, SearchQuery
 from ..windows import kayak_landing, kayak_takeoff
 from .base import BaseScraper, BotBlockedError, CaptchaError, PaginationError, ScraperError, SearchTimeoutError
+from .filters import within_constraints  # noqa: F401 -- also imported from here by older callers
 
 logger = logging.getLogger(__name__)
 
@@ -104,23 +105,6 @@ def merge_offers(offer_lists: Sequence[Sequence[Offer]]) -> List[FlightResult]:
                 kept[key] += 1
                 merged.append(result)
     return merged
-
-
-def within_constraints(query: SearchQuery, result: FlightResult) -> bool:
-    if query.nonstop_only and (result.outbound_stops or result.return_stops):
-        return False
-    checks = (
-        (query.outbound_takeoff, query.depart_date, result.outbound_depart),
-        (query.return_takeoff, query.return_date, result.return_depart),
-        (query.outbound_landing, query.depart_date, result.outbound_arrive),
-        (query.return_landing, query.return_date, result.return_arrive),
-    )
-    for window, leg_date, moment in checks:
-        if window is None:
-            continue
-        if moment is None or not window.contains(leg_date, datetime.fromisoformat(moment)):
-            return False
-    return True
 
 
 def _page_number(poll: dict) -> Optional[int]:

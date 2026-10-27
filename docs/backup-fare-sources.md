@@ -6,6 +6,10 @@ Notes for the case where Kayak stays closed to the scheduled runners. Researched
 not a migration:** Kayak data is richer for our purposes, so switch only if access
 doesn't come back within a reasonable time.
 
+**Update 2026-10-27:** the free options are built as sources -- `serpapi`, `searchapi`,
+`flightpowers` and `fli` (README, "Sources") -- and not yet run against the live
+services. GitHub's runners were still answered with a CAPTCHA on 2026-10-27.
+
 ## Short version
 
 1. **[SerpApi's Google Flights API](https://serpapi.com/google-flights-api)** is the

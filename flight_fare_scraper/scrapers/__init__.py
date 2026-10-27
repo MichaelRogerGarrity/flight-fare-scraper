@@ -1,10 +1,15 @@
 from typing import Dict, Type
 
 from .base import BaseScraper
+from .fli_source import FliScraper
+from .flightpowers import FlightPowersScraper
 from .kayak import KayakScraper
+from .serp_google import SearchApiScraper, SerpApiScraper
 
+# A route or query picks its source by name (`site`), which is also stored on each row.
 SCRAPERS: Dict[str, Type[BaseScraper]] = {
-    KayakScraper.name: KayakScraper,
+    scraper.name: scraper
+    for scraper in (KayakScraper, SerpApiScraper, SearchApiScraper, FlightPowersScraper, FliScraper)
 }
 
 
