@@ -10,7 +10,7 @@ from . import redact
 from .pacing import Pacer
 from .models import FlightResult, SearchQuery
 from .scrapers import get_scraper_class
-from .scrapers.base import BaseScraper, BotBlockedError, ScraperError
+from .scrapers.base import BaseScraper, BotBlockedError, CaptchaError, ScraperError
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,11 @@ STOPPED_BREAKER = "breaker"
 STOPPED_DEADLINE = "deadline"
 # Interrupted from outside: Ctrl-C, or GitHub cancelling the job (SIGINT, then SIGTERM).
 STOPPED_INTERRUPTED = "interrupted"
+# The site answered a search with a CAPTCHA: it has flagged the connection, and every
+# further search would only be more of the same. Stops the run at the first one.
+STOPPED_CAPTCHA = "captcha"
+# Stops that mean the site is refusing us, so later shards shouldn't try.
+BLOCKED_STOPS = (STOPPED_BREAKER, STOPPED_CAPTCHA)
 
 
 @dataclass
@@ -83,6 +88,10 @@ def search_with_retry(
                 scraper.reset()
             return scraper.search(query)
         except RETRYABLE_ERRORS as error:
+            if isinstance(error, CaptchaError):
+                logger.error("CAPTCHA %s: attempt %d/%d answered with a CAPTCHA; not retrying",
+                             redact.label(query), attempt, attempts)
+                raise
             blocked = isinstance(error, BotBlockedError)
             tag = "BOT_BLOCKED" if blocked else "SEARCH_FAILED"
             if attempt == attempts:
@@ -122,6 +131,7 @@ def run_queries(
     """
     report = BatchReport()
     consecutive_failures = 0
+    challenged = False  # a CAPTCHA was seen: stop before the next search
     searched_any = False
     by_site: Dict[str, List[SearchQuery]] = {}
     for query in queries:
@@ -147,7 +157,11 @@ def run_queries(
             for position, query in enumerate(site_queries):
                 next_up = position
                 reason = ""
-                if breaker_after and consecutive_failures >= breaker_after:
+                if challenged:
+                    reason = STOPPED_CAPTCHA
+                    logger.error("CIRCUIT_OPEN: the site answered with a CAPTCHA; stopping before the %d left",
+                                 len(site_queries) - position)
+                elif breaker_after and consecutive_failures >= breaker_after:
                     reason = STOPPED_BREAKER
                     logger.error("CIRCUIT_OPEN: %d searches failed in a row; stopping before the %d left",
                                  consecutive_failures, len(site_queries) - position)
@@ -201,6 +215,7 @@ def run_queries(
                     on_search(query, results if error is None else [], report.records[-1])
                 if error is not None:
                     consecutive_failures += 1
+                    challenged = challenged or isinstance(error, CaptchaError)
                     continue
                 consecutive_failures = 0
                 logger.info("%s: %d results", redact.label(query), len(results))
@@ -215,6 +230,8 @@ def run_queries(
             report.in_page_clicks += getattr(scraper, "in_page_clicks", 0)
             scraper.__exit__(None, None, None)
 
+    if challenged and not report.stopped:  # the CAPTCHA came on the last search
+        report.stopped = STOPPED_CAPTCHA
     _log_summary(len(queries), report)
     return report
 

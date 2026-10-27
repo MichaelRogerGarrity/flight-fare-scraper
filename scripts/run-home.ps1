@@ -56,6 +56,9 @@ $arguments = @(
     "--job-hours", "$TargetHours",
     "--deadline", (& $utc $now.AddHours($DeadlineHours)),
     "--summary", "home-runs/summary-$runId.json",
+    # A CAPTCHA, bot pages or the breaker leave an alert here; a Claude scheduled task
+    # forwards it to the phone (see the README).
+    "--alert-dir", "home-runs/alerts",
     "--log-file", "home-runs/home.log"
 ) | ForEach-Object { "`"$_`"" }
 

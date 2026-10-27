@@ -19,7 +19,8 @@ from . import audit, budget, checkpoint, db, pacing, schedule, storage
 from .config import build_query, load_queries
 from .models import SearchQuery
 from .output import write_results
-from .runner import BREAKER_AFTER, STOPPED_BREAKER, BatchReport, run_queries, search_record
+from .runner import (BLOCKED_STOPS, BREAKER_AFTER, STOPPED_CAPTCHA, BatchReport, run_queries,
+                     search_record)
 
 logger = logging.getLogger("flight_fare_scraper")
 
@@ -173,6 +174,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                        help="Also write one record per search to this Parquet file. Holds real "
                             "routes and error text: with --push it goes to the private bucket, never "
                             "to a public log or artifact.")
+    track.add_argument("--alert-dir", dest="alert_dir", default="",
+                       help="If the site refuses this run (a CAPTCHA, bot pages, or the breaker), leave an "
+                            "alert file here for `alerts` to pick up and a notifier to forward")
     track.add_argument("--resume", action="store_true",
                        help="Skip searches that already have fares in --db for this snapshot date, so a "
                             "run cut short can be started again and pick up where it stopped")
@@ -262,6 +266,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     publish.add_argument("--run-id", dest="run_id", default="", help="Name for that day's objects")
     publish.add_argument("--diagnostics", default="", help="That run's search-record Parquet file, if any")
 
+    alerts = sub.add_parser("alerts", help="Print pending alerts from `track --alert-dir`, once each, and "
+                                           "file them as sent")
+    alerts.add_argument("--dir", required=True, help="The directory given to track --alert-dir")
+    alerts.add_argument("--log-file", default="", help=LOG_FILE_HELP)
+
     pull = sub.add_parser("pull", parents=[common],
                           help="Merge published snapshots from object storage into a local DuckDB file")
     pull.add_argument("--db", default="fares.duckdb", help="DuckDB database file to merge into")
@@ -308,7 +317,7 @@ def _upstream_tripped(directory: str) -> bool:
     """Whether any earlier shard's summary says it stopped on its breaker."""
     for path in Path(directory).glob("**/*.json") if directory else []:
         try:
-            if json.loads(path.read_text(encoding="utf-8")).get("stopped") in (STOPPED_BREAKER, STOPPED_UPSTREAM):
+            if json.loads(path.read_text(encoding="utf-8")).get("stopped") in (*BLOCKED_STOPS, STOPPED_UPSTREAM):
                 return True
         except (OSError, ValueError):
             continue
@@ -404,9 +413,63 @@ def run_track(args: argparse.Namespace, queries: List[SearchQuery]) -> int:
                 Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
                 Path(args.summary).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
                 logger.info("wrote run summary to %s", args.summary)
+            if args.alert_dir:
+                try:
+                    _write_alert(args.alert_dir, report, queries, run_id, day)
+                except OSError as error:
+                    logger.warning("ALERT_NOT_SAVED: %s", type(error).__name__)
     if report.stopped:
         return 1  # a run that stopped early must not look like a good day
     return _track_exit_code(report, args.tolerate_failures)
+
+
+def alert_message(report, queries: List[SearchQuery], at: datetime) -> Optional[str]:
+    """One line for a phone notification when the site refused a run, else None. Counts only."""
+    done = f"{len(report.succeeded)} of {len(queries)} searches"
+    clock = f"{at:%I:%M %p}".lstrip("0")
+    blocked = sum(failure.bot_blocked for failure in report.failures)
+    if report.stopped == STOPPED_CAPTCHA:
+        return f"Fare tracking stopped at {clock}: Kayak answered with a CAPTCHA after {done}."
+    if report.stopped in BLOCKED_STOPS:
+        return (f"Fare tracking stopped at {clock}: {BREAKER_AFTER} searches failed in a row after {done}"
+                f"{f', {blocked} bot-blocked' if blocked else ''}.")
+    if blocked:
+        return f"Fare tracking at {clock}: {blocked} search(es) hit Kayak's bot page; {done} succeeded."
+    return None
+
+
+def _write_alert(directory: str, report, queries: List[SearchQuery], run_id: str, day: date) -> None:
+    """Leave an alert file for the notifier (`alerts`) when the site refused this run."""
+    now = datetime.now()
+    message = alert_message(report, queries, now)
+    if not message:
+        return
+    path = Path(directory)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / f"{run_id}.json").write_text(json.dumps({
+        "at": now.isoformat(timespec="seconds"), "run_id": run_id, "snapshot_date": day.isoformat(),
+        "stopped": report.stopped, "searches": len(queries), "succeeded": len(report.succeeded),
+        "failed": len(report.failures), "skipped": len(report.skipped), "message": message,
+    }, indent=2) + "\n", encoding="utf-8")
+    logger.error("ALERT: %s", message)
+
+
+def run_alerts(args: argparse.Namespace) -> int:
+    """Print each pending alert's message, one per line, and file it under sent/.
+
+    For a notifier that runs this and forwards whatever it prints: each alert is
+    printed exactly once, so a notifier running every hour never repeats one.
+    """
+    directory = Path(args.dir)
+    sent = directory / "sent"
+    for path in sorted(directory.glob("*.json")):
+        try:
+            print(json.loads(path.read_text(encoding="utf-8"))["message"])
+        except (OSError, ValueError, KeyError):
+            print(f"Fare tracking: an alert file couldn't be read ({path.name})")
+        sent.mkdir(parents=True, exist_ok=True)
+        path.replace(sent / path.name)
+    return 0
 
 
 def _write_diagnostics(con, report, args: argparse.Namespace, snapshot: date, run_id: str) -> None:
@@ -733,6 +796,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return run_pull(args)
         if args.mode == "publish-hf":
             return run_publish_hf(args)
+        if args.mode == "alerts":
+            return run_alerts(args)
         if args.mode == "runlog":
             return run_runlog(args)
         if args.mode == "audit":

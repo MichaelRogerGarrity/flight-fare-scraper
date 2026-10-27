@@ -165,6 +165,15 @@ runners. Separately, no search starts after a deadline set by `plan`: 30 minutes
 next scheduled run, so one day's run can never overlap the next. Either way the run goes red,
 and the run log's `skipped` and `stopped` columns say how much was left undone and why.
 
+**CAPTCHAs.** From 2026-10-26 Kayak sometimes answers a connection it has flagged with a
+CAPTCHA challenge inside the results response (`captchaRedirectUrl`) instead of
+redirecting to its bot page. That counts as a block: the search isn't retried, the run
+stops at once (`stopped: captcha`), and later shards skip themselves as after the breaker.
+With `track --alert-dir DIR`, a run the site refused -- a CAPTCHA, bot pages, or the
+breaker -- leaves a one-line, counts-only alert in DIR; `alerts --dir DIR` prints each
+pending alert once and files it under `sent/`. On the home machine, a Claude scheduled
+task runs that hourly and forwards anything it prints as a push notification.
+
 A shard tolerates up to three failed searches before it goes red: at ~70 searches a
 shard, one transient timeout is noise, and a daily unattended job that cries wolf gets
 ignored. Any bot-block fails the run regardless of the tolerance, since that is the

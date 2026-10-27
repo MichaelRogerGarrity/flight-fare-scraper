@@ -12,6 +12,14 @@ class BotBlockedError(ScraperError):
     """The site detected automation and served its bot page instead of results."""
 
 
+class CaptchaError(BotBlockedError):
+    """The site answered with a CAPTCHA challenge instead of results.
+
+    Unlike a one-off bot page, this is the site deciding the whole connection looks
+    automated: retrying only adds to the evidence, so a run stops at the first one.
+    """
+
+
 class SearchTimeoutError(ScraperError):
     """Results never finished loading in time."""
 

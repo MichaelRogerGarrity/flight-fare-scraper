@@ -17,12 +17,22 @@ from playwright_stealth import Stealth
 from .. import redact
 from ..models import FlightResult, SearchQuery
 from ..windows import kayak_landing, kayak_takeoff
-from .base import BaseScraper, BotBlockedError, PaginationError, ScraperError, SearchTimeoutError
+from .base import BaseScraper, BotBlockedError, CaptchaError, PaginationError, ScraperError, SearchTimeoutError
 
 logger = logging.getLogger(__name__)
 
 POLL_URL_RE = re.compile(r"/i/api/search/dynamic/flights/poll")
 BOT_PAGE_MARKER = "/help/bots"
+# A poll response carrying this key is a CAPTCHA challenge, not results: Kayak's answer,
+# from 2026-10-26, to a connection it has decided is automated. No redirect happens,
+# so without this check it looked like a slow page until the 45-second timeout.
+CAPTCHA_KEY = "captchaRedirectUrl"
+_CHALLENGED = -1  # where on_response files a challenge among the polls, by page number
+
+
+def is_challenge(data) -> bool:
+    """Whether a poll response is a CAPTCHA challenge rather than a page of results."""
+    return isinstance(data, dict) and CAPTCHA_KEY in data
 BASE_URL = "https://www.kayak.com"
 SHOW_MORE_TEXT = "Show more results"
 MAX_PAGES_PER_PASS = 20
@@ -284,6 +294,10 @@ class KayakScraper(BaseScraper):
                     stats["unreadable_polls"] += 1
                     logger.debug("%s: unreadable poll response", label, exc_info=True)
                     return
+                if is_challenge(data):
+                    stats["captcha"] = True
+                    polls.setdefault(_CHALLENGED, []).append(data)
+                    return
                 page_number = _page_number(data)
                 if page_number is None:
                     # A rising count here, with timeouts, is what a change to the site's
@@ -332,6 +346,9 @@ class KayakScraper(BaseScraper):
         deadline = time.monotonic() + self.timeout_s
         while True:
             self._raise_if_blocked(page, label)
+            if polls.get(_CHALLENGED):
+                # The challenge URL itself isn't kept: it is session-specific and says nothing more.
+                raise CaptchaError(f"{label}: answered with a CAPTCHA challenge instead of results")
             complete = [poll for poll in polls.get(number, []) if poll.get("status") == "complete"]
             if complete:
                 return complete[-1]
