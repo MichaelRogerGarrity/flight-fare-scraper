@@ -171,8 +171,7 @@ redirecting to its bot page. That counts as a block: the search isn't retried, t
 stops at once (`stopped: captcha`), and later shards skip themselves as after the breaker.
 With `track --alert-dir DIR`, a run the site refused -- a CAPTCHA, bot pages, or the
 breaker -- leaves a one-line, counts-only alert in DIR; `alerts --dir DIR` prints each
-pending alert once and files it under `sent/`. On the home machine, a Claude scheduled
-task runs that hourly and forwards anything it prints as a push notification.
+pending alert once and files it under `sent/`, for anything that wants to forward them.
 
 A shard tolerates up to three failed searches before it goes red: at ~70 searches a
 shard, one transient timeout is noise, and a daily unattended job that cries wolf gets

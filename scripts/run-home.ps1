@@ -65,8 +65,7 @@ $arguments = @(
     "--job-hours", "$TargetHours",
     "--deadline", (& $utc $now.AddHours($DeadlineHours)),
     "--summary", "home-runs/summary-$runId.json",
-    # A CAPTCHA, bot pages or the breaker leave an alert here; a Claude scheduled task
-    # forwards it to the phone (see the README).
+    # A CAPTCHA, bot pages or the breaker leave a one-line alert here (see the README).
     "--alert-dir", "home-runs/alerts",
     # The load ramp's level and the last refusal, kept between runs.
     "--load-state", "home-runs/load-state.json",
