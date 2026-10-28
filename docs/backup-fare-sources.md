@@ -68,6 +68,47 @@ a day is ~1,500 requests at the default, ~500 at `top_n=1`. Google publishes no 
 the endpoint (it is undocumented); robots.txt disallows `/travel/flights/search` though not
 the `/_/FlightsFrontendUi/` endpoint `fli` calls.
 
+## Other sites to scrape (explored 2026-10-27)
+
+Checked from a residential connection: each site's robots.txt, whether a plain request
+meets a bot challenge, and its terms. Nearly every site's terms forbid automated access
+without written permission -- Kayak's included ("use automated tools on our Site without
+our written permission") -- so the terms don't separate the candidates. What does is
+whether robots.txt or a bot check stands in the way, and we don't get past either.
+
+| site | robots.txt on search | bot check | verdict |
+| --- | --- | --- | --- |
+| **Skiplagged** | allowed (only redirect/booking paths disallowed) | none on one test request | **the one open option**, see below |
+| Kiwi.com | can't tell: even robots.txt is served a "Client Challenge" page | yes, on every request | out |
+| ITA Matrix | none (single-page app) | the search API (`alkalimatrix-pa.googleapis.com`) carries Google BotGuard challenges | out |
+| Skyscanner | `/g/*`, `/trip/api/` disallowed | PerimeterX | out |
+| Expedia group (Orbitz, Travelocity, Hotwire ...) | `/Flights-Search`, `/Flight-SearchResults` disallowed | HUMAN/PerimeterX | out |
+| Trip.com | `/restapi/soa2/*` (its search API) and `*searchresults*` disallowed | - | out |
+| Aviasales site | `/search` disallowed | - | out (its data API, Travelpayouts, is allowed -- table above) |
+| Priceline, Momondo, Cheapflights | - | - | **not a hedge**: Booking Holdings, Kayak's family; Cheapflights runs on Kayak's own platform |
+| `fast-flights` | - | - | a second library for the same Google endpoint `fli` uses; same block risk, no new data |
+
+### Skiplagged
+
+One round trip on a placeholder route (NYC area to LA, 7 nights) through the endpoint its
+own site calls, `https://skiplagged.com/api/search.php?from=..&to=..&depart=..&return=..&format=v3`:
+
+- HTTP 200, plain JSON, ~280 KB, 5.6 s; no browser, cookie or token needed
+- 107 outbound and 154 return options, each with full segments: airline, flight number,
+  airports, times with offsets, durations
+- **one-way pricing**: each direction is priced on its own (in cents), and the round trip
+  is the two added together (`min_round_trip_price` gives the cheapest pairing). Kayak and
+  Google price the round trip as one ticket, which can differ
+- **hidden-city fares are mixed in**: 13 of 107 outbound and 16 of 154 returns flew on
+  past the destination (e.g. NYC-CLT-LA-SMF, getting off in LA), and those were the
+  cheapest on both sides. They have to be filtered out (last segment's arrival isn't the
+  destination) or the minimum is a fare you can't use with a checked bag
+- `incomplete: true` -- the site polls for more; one request may be a partial answer
+- nothing on bags, cabin or seller; no price prediction
+
+Its terms forbid "any robot, spider, scraper or other automated means" without permission,
+the same as Kayak's. Untested from GitHub's runners.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`
@@ -93,4 +134,6 @@ the `/_/FlightsFrontendUi/` endpoint `fli` calls.
 - [momondo: About us](https://www.momondo.com/about) (managed by Kayak, part of Booking Holdings)
 - [Amadeus Self-Service shutdown](https://ignav.com/docs/amadeus-self-service-shutdown)
 - [Kiwi.com Tequila API status](https://www.vervotech.com/hub/integrations/kiwi-com-api/)
+- [Skiplagged terms](https://skiplagged.com/terms) and [Kayak terms of use](https://www.kayak.com/terms-of-use)
+- [fast-flights](https://github.com/AWeirdDev/flights)
 - [Skyscanner Travel API eligibility](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/25486916837405-What-is-the-acceptance-criteria-for-being-eligible-for-the-Car-Hire-API)
