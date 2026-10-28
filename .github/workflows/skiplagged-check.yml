@@ -1,0 +1,89 @@
+# Manually triggered check of Skiplagged as a fare source (see "Other sites to scrape" in
+# docs/backup-fare-sources.md): does a GitHub-hosted runner get answers from its search
+# endpoint, and does that hold over a few searches? One request per round trip. The routes
+# are fixed placeholders unrelated to what this repo tracks, so the public log shows
+# nothing private. Prints outcomes and timings only.
+name: Skiplagged check
+
+on:
+  workflow_dispatch:
+    inputs:
+      searches:
+        description: Round-trip searches to run (one request each)
+        default: "6"
+      pause:
+        description: Seconds between searches
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Search
+        env:
+          SEARCHES: ${{ inputs.searches }}
+          PAUSE: ${{ inputs.pause }}
+        run: |
+          python - <<'PYEOF'
+          import json, os, time, urllib.error, urllib.parse, urllib.request
+          from datetime import date, timedelta
+
+          ROUTES = [("LAX", "SEA"), ("BOS", "DEN"), ("ATL", "LAS"), ("SFO", "JFK"), ("SEA", "HNL"), ("MIA", "PHX")]
+          AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+          searches, pause = int(os.environ["SEARCHES"]), float(os.environ["PAUSE"])
+
+          def cheapest(data, side, destination):
+              # Skip hidden-city fares: their last segment lands past the destination.
+              flights = data.get("flights") or {}
+              prices = [option["one_way_price"] for option in (data.get("itineraries") or {}).get(side, [])
+                        if flights.get(option.get("flight"), {}).get("segments", [{}])[-1].get("arrival", {}).get("airport") == destination
+                        and option.get("one_way_price")]
+              return min(prices, default=None), len(prices)
+
+          ok = refused = 0
+          for i in range(searches):
+              origin, dest = ROUTES[i % len(ROUTES)]
+              out = date.today() + timedelta(days=30 + 7 * (i // len(ROUTES)))
+              query = urllib.parse.urlencode({"from": origin, "to": dest, "depart": out.isoformat(),
+                                              "return": (out + timedelta(days=7)).isoformat(), "format": "v3",
+                                              "counts[adults]": 1, "counts[children]": 0})
+              request = urllib.request.Request(f"https://skiplagged.com/api/search.php?{query}",
+                                               headers={"User-Agent": AGENT, "Accept": "application/json"})
+              started = time.monotonic()
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      status, kind, body = response.status, response.headers.get("Content-Type", ""), response.read()
+              except urllib.error.HTTPError as error:
+                  status, kind, body = error.code, error.headers.get("Content-Type", ""), error.read()
+              except Exception as error:
+                  refused += 1
+                  print(f"{i+1:3d} {origin}-{dest} FAILED {time.monotonic() - started:5.1f}s  {type(error).__name__}")
+                  continue
+              seconds = time.monotonic() - started
+              try:
+                  data = json.loads(body)
+              except ValueError:
+                  data = None
+              if status == 200 and isinstance(data, dict) and data.get("itineraries"):
+                  ok += 1
+                  out_price, out_n = cheapest(data, "outbound", dest)
+                  back_price, back_n = cheapest(data, "inbound", origin)
+                  total = f"${(out_price + back_price) / 100:,.0f}" if out_price and back_price else "-"
+                  print(f"{i+1:3d} {origin}-{dest} ok     HTTP {status} {len(body)//1024:4d} KB {seconds:5.1f}s  "
+                        f"{out_n}/{back_n} options  cheapest round trip {total}  incomplete={data.get('incomplete')}")
+              else:
+                  refused += 1
+                  print(f"{i+1:3d} {origin}-{dest} REFUSED HTTP {status} {kind[:40]} {len(body)} B {seconds:5.1f}s  "
+                        f"{body[:120]!r}")
+              if i < searches - 1:
+                  time.sleep(pause)
+          print(f"\n{ok} ok, {refused} refused or failed of {searches}")
+          PYEOF
