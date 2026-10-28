@@ -107,7 +107,14 @@ own site calls, `https://skiplagged.com/api/search.php?from=..&to=..&depart=..&r
 - nothing on bags, cabin or seller; no price prediction
 
 Its terms forbid "any robot, spider, scraper or other automated means" without permission,
-the same as Kayak's. Untested from GitHub's runners.
+the same as Kayak's.
+
+**From GitHub's runners** (`.github/workflows/skiplagged-check.yml`, 2026-10-27): 6 of 6
+round trips answered, one request each, a minute apart, 3-6 s and 180-370 KB per answer,
+39-156 non-hidden-city options per direction. Every answer was `incomplete: true`, so
+whether a single request gets the cheapest fare is still open -- comparing with Kayak or
+Google on the same dates would settle it. Six searches don't show how far it holds; the
+Google test refused runners only after a few dozen requests.
 
 ## If we switch
 
