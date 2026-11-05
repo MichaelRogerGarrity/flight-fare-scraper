@@ -10,6 +10,11 @@ doesn't come back within a reasonable time.
 `flightpowers` and `fli` (README, "Sources") -- and not yet run against the live
 services. GitHub's runners were still answered with a CAPTCHA on 2026-10-27.
 
+**Update 2026-11-05:** from GitHub's runners, Kayak still answers with a CAPTCHA; `fli`
+answered 3 of 4 small searches (1 request each at `top_n=1`, one empty); Skiplagged
+answered 4 of 4. On the two routes and dates both searched, Skiplagged's cheapest
+round trip (two one-ways, hidden-city fares excluded) was within $2-6 of Google's.
+
 ## Short version
 
 1. **[SerpApi's Google Flights API](https://serpapi.com/google-flights-api)** is the
