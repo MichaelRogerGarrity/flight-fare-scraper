@@ -1,0 +1,40 @@
+# Manually triggered check of Opodo as a fare source from a GitHub-hosted runner: does it
+# keep answering a plain headless browser over a run of searches? Placeholder routes
+# (scripts/opodo_check.py); prints outcomes, counts and timings only.
+name: Opodo check
+
+on:
+  workflow_dispatch:
+    inputs:
+      searches:
+        description: Round-trip searches to run (one page load each)
+        default: "20"
+      pause:
+        description: Seconds between searches
+        default: "180"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install a browser
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Search
+        env:
+          SEARCHES: ${{ inputs.searches }}
+          PAUSE: ${{ inputs.pause }}
+          PYTHONIOENCODING: utf-8
+        run: python scripts/opodo_check.py "$SEARCHES" "$PAUSE"
