@@ -126,6 +126,44 @@ whether a single request gets the cheapest fare is still open -- comparing with 
 Google on the same dates would settle it. Six searches don't show how far it holds; the
 Google test refused runners only after a few dozen requests.
 
+## More sites, checked in a browser (2026-11-05)
+
+A plain headless Chromium with no stealth patches (`scripts/probe_sites.py`,
+`.github/workflows/site-probe.yml`), one search page each on a placeholder route, from
+home and from GitHub's runners:
+
+| site | answer |
+| --- | --- |
+| **Opodo** | fares, no challenge, from home and the runners -- see below |
+| eDreams, Wego | Cloudflare challenge |
+| Trip.com | HTTP 432 |
+| Skyscanner | PerimeterX |
+| Aviasales | AWS WAF; no results |
+| Booking.com flights | 202 challenge |
+| Gotogate, Mytrip, CheapOair, FlightHub, JustFly | 403 |
+
+### Opodo
+
+The search page (`https://www.opodo.com/travel/#results/type=R;from=..;to=..;dep=..;ret=..`)
+gets its fares from one call it makes itself: `POST /itinerary-selection-bff/service/graphql`,
+operation `searchItinerary`. Its answer:
+
+- **real round-trip tickets**, priced as one: no one-way stitching, no hidden-city fares
+- 300-800 itineraries per search on domestic routes
+- two prices per itinerary: the regular one (`MEMBER_PRICE_POLICY_UNDISCOUNTED`) and a
+  lower one for Opodo's paid Prime membership (`..._DISCOUNTED`, e.g. EUR 307 against
+  EUR 355). The regular price is the comparable figure
+- **prices in EUR** on opodo.com, with no currency in the request; a source would convert
+- per segment: flight number, marketing and operating carrier, aircraft, cabin, terminals,
+  times with offsets; a cabin-bag rule per leg (`CABIN_INCLUDED` or `BASED_ON_AIRLINE`);
+  seats left per itinerary
+- ~45 s per search in a browser
+
+**From GitHub's runners** (`.github/workflows/opodo-check.yml`, `scripts/opodo_check.py`):
+**20 of 20** round trips answered, one browser, one search every ~3.8 minutes over ~75
+minutes, six routes, departures 31-52 days out. 35-811 itineraries each (the 35 was a
+late-December date); cheapest regular fares EUR 282-830. No challenge and no slowing.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`
@@ -153,4 +191,5 @@ Google test refused runners only after a few dozen requests.
 - [Kiwi.com Tequila API status](https://www.vervotech.com/hub/integrations/kiwi-com-api/)
 - [Skiplagged terms](https://skiplagged.com/terms) and [Kayak terms of use](https://www.kayak.com/terms-of-use)
 - [fast-flights](https://github.com/AWeirdDev/flights)
+- [Opodo](https://www.opodo.com/)
 - [Skyscanner Travel API eligibility](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/25486916837405-What-is-the-acceptance-criteria-for-being-eligible-for-the-Car-Hire-API)
