@@ -1,0 +1,36 @@
+# Manually triggered check of other fare sites from a GitHub-hosted runner: does each
+# answer a plain headless browser with fares, or with a challenge? One search page per
+# site on a fixed placeholder route (scripts/probe_sites.py). Prints counts only.
+name: Site probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      sites:
+        description: Space-separated site names from scripts/probe_sites.py
+        default: "opodo aviasales"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install a browser
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Probe
+        env:
+          SITES: ${{ inputs.sites }}
+          PYTHONIOENCODING: utf-8
+        run: python scripts/probe_sites.py $SITES
