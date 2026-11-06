@@ -14,6 +14,11 @@ services. GitHub's runners were still answered with a CAPTCHA on 2026-10-27.
 answered 3 of 4 small searches (1 request each at `top_n=1`, one empty); Skiplagged
 answered 4 of 4. On the two routes and dates both searched, Skiplagged's cheapest
 round trip (two one-ways, hidden-city fares excluded) was within $2-6 of Google's.
+A longer Skiplagged run the same evening answered **40 of 40** (one request every 2
+minutes over ~80 minutes, departures 30-72 days out), 3-9 s each, with no sign of
+slowing. One answer (a holiday-week departure) had no non-hidden-city outbound option,
+so it gave no round trip. Google refused the runners after a few dozen requests on
+2026-10-26; Skiplagged showed nothing like that here.
 
 ## Short version
 
