@@ -345,14 +345,24 @@ def _sk_answer():
     }
 
 
-def _skiplagged(monkeypatch, answer):
+def _skiplagged(monkeypatch, answer, returns=()):
+    """A scraper whose search gets `answer`, and whose returns requests get `returns` in
+    turn (an exception in the list is raised). Keeps the main search's params in `calls`
+    and each returns request in `scraper.posts`."""
     from flight_fare_scraper.scrapers.skiplagged import SkiplaggedScraper
-    calls = []
+    calls, replies = [], list(returns)
+    scraper = SkiplaggedScraper(sleep=lambda seconds: scraper.slept.append(seconds))
+    scraper.posts, scraper.slept = [], []
 
     def respond(method, url, params=None, body=None, headers=None):
-        calls.append(params)
-        return answer
-    scraper = SkiplaggedScraper()
+        if method == "GET":
+            calls.append(params)
+            return answer
+        scraper.posts.append({"params": params, "body": body})
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
     monkeypatch.setattr(scraper, "request", respond)
     return scraper, calls
 
@@ -383,6 +393,84 @@ def test_skiplagged_with_no_usable_flight_one_way_is_an_empty_answer(monkeypatch
     answer["itineraries"]["inbound"] = []
     scraper, _ = _skiplagged(monkeypatch, answer)
     assert scraper.search(NONSTOP) == []
+
+
+def test_skiplagged_trusts_its_own_hidden_city_mark(monkeypatch):
+    answer = _sk_answer()
+    answer["flights"]["o-late"]["count"] = 0  # rides fewer flights than the ticket has
+    scraper, _ = _skiplagged(monkeypatch, answer)
+    assert "20:00" not in {row.outbound_depart[11:16] for row in scraper.search(NONSTOP)}
+
+
+def _with_round_trip_fares(answer):
+    """Two outbounds sold only as round-trip tickets, and one whose ticket costs more
+    than its own two one-ways."""
+    answer["flights"]["o-rt"] = dict(_sk_flight(("MIA", "MCO", "10:00", "11:00")), data="flight-rt")
+    answer["flights"]["o-rt2"] = dict(_sk_flight(("MIA", "MCO", "11:00", "12:00")), data="flight-rt2")
+    answer["itineraries"]["outbound"] += [
+        {"flight": "o-rt", "min_round_trip_price": 12000, "data": "meta-rt"},
+        {"flight": "o-rt2", "min_round_trip_price": 14000, "data": "meta-rt2"}]
+    answer["itineraries"]["outbound"][1].update(min_round_trip_price=99000, data="meta-dear")  # o-nonstop
+    answer["flights"]["o-nonstop"]["data"] = "flight-nonstop"
+    return answer
+
+
+def _sk_returns(outbound, *backs, loading=False):
+    """A returns answer: the outbound, its returns at round-trip prices, and their flights."""
+    return {"airlines": {"AA": {"name": "American Airlines"}},
+            "flights": {key: _sk_flight(hop, day="2026-11-29") for key, _price, hop in backs},
+            "itineraries": {"outbound": [{"flight": outbound, "inbound": [
+                {"flight": key, "round_trip_price": price, "data": "x"} for key, price, _hop in backs]}]},
+            "show_loading": loading}
+
+
+def test_skiplagged_prices_round_trip_tickets_with_their_returns(monkeypatch):
+    returns = [_sk_returns("o-rt", ("r-1", 12000, ("MCO", "MIA", "17:00", "18:00")), loading=True),
+               _sk_returns("o-rt", ("r-1", 12000, ("MCO", "MIA", "17:00", "18:00")),
+                           ("r-hidden", 9000, ("MCO", "ATL", "15:00", "16:00"))),
+               _sk_returns("o-rt2", ("r-2", 14000, ("MCO", "MIA", "19:00", "20:00")))]
+    scraper, _ = _skiplagged(monkeypatch, _with_round_trip_fares(_sk_answer()), returns)
+    rows = {(row.outbound_depart[11:16], row.return_depart[11:16]): row.price for row in scraper.search(NONSTOP)}
+    assert rows[("10:00", "17:00")] == 120.0 and rows[("11:00", "19:00")] == 140.0
+    assert ("10:00", "15:00") not in rows  # its hidden-city return
+    assert rows[("08:00", "18:00")] == 159.5  # the dearer ticket was never asked about
+    # The first outbound took two asks (the list was still loading), the second one.
+    assert [post["body"] for post in scraper.posts] == [{"trip": "flight-rt", "tripMeta": "meta-rt"}] * 2 + [
+        {"trip": "flight-rt2", "tripMeta": "meta-rt2"}]
+    assert [post["params"]["poll"] for post in scraper.posts] == [0, 1, 0] and scraper.slept == [3.0]
+    assert scraper.posts[0]["params"]["return"] == "2026-11-29"
+
+
+def test_skiplagged_round_trip_lookups_are_capped(monkeypatch):
+    monkeypatch.setenv("FFS_SKIPLAGGED_ROUND_TRIPS", "1")
+    returns = [_sk_returns("o-rt", ("r-1", 12000, ("MCO", "MIA", "17:00", "18:00")))]
+    scraper, _ = _skiplagged(monkeypatch, _with_round_trip_fares(_sk_answer()), returns)
+    scraper.search(NONSTOP)
+    assert [post["body"]["trip"] for post in scraper.posts] == ["flight-rt"]  # the cheaper ticket first
+    monkeypatch.setenv("FFS_SKIPLAGGED_ROUND_TRIPS", "0")
+    scraper, _ = _skiplagged(monkeypatch, _with_round_trip_fares(_sk_answer()))
+    assert len(scraper.search(NONSTOP)) == 3 and scraper.posts == []  # only the one-way pairings
+
+
+def test_a_round_trip_price_that_is_only_the_one_ways_rounded_is_not_looked_up(monkeypatch):
+    answer = _sk_answer()
+    answer["itineraries"]["outbound"][1].update(min_round_trip_price=15900, data="meta")  # 89.50 + 70 = 159.50
+    answer["flights"]["o-nonstop"]["data"] = "flight"
+    scraper, _ = _skiplagged(monkeypatch, answer)
+    scraper.search(NONSTOP)
+    assert scraper.posts == []
+
+
+def test_a_failed_round_trip_lookup_costs_only_its_returns(monkeypatch):
+    returns = [ScraperError("skiplagged: HTTP 500"),
+               _sk_returns("o-rt2", ("r-2", 14000, ("MCO", "MIA", "19:00", "20:00")))]
+    scraper, _ = _skiplagged(monkeypatch, _with_round_trip_fares(_sk_answer()), returns)
+    rows = scraper.search(NONSTOP)
+    assert {row.outbound_depart[11:16] for row in rows} == {"08:00", "20:00", "11:00"}
+    blocked, _ = _skiplagged(monkeypatch, _with_round_trip_fares(_sk_answer()),
+                             [BotBlockedError("skiplagged: refused (HTTP 403)")])
+    with pytest.raises(BotBlockedError):
+        blocked.search(NONSTOP)
 
 
 def test_skiplagged_challenges_and_refusals_count_as_blocks(monkeypatch):

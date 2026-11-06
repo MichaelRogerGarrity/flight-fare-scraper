@@ -157,13 +157,18 @@ def outbound_options() -> int:
     """How many outbound flights to pair with returns, for sources that fetch the
     returns separately. Google prices each outbound with its cheapest return, so 1 finds
     the cheapest round trip; each extra one costs a request but adds pairings."""
-    try:
-        return max(1, int(os.environ.get(OUTBOUND_OPTIONS_ENV, "1")))
-    except ValueError:
-        return 1
+    return env_count(OUTBOUND_OPTIONS_ENV, 1, minimum=1)
 
 
 OUTBOUND_OPTIONS_ENV = "FFS_GOOGLE_OUTBOUND_OPTIONS"
+
+
+def env_count(name: str, default: int, minimum: int = 0) -> int:
+    """A whole-number setting from the environment; the default if unset or unreadable."""
+    try:
+        return max(minimum, int(os.environ.get(name, str(default))))
+    except ValueError:
+        return default
 
 
 class ItinerarySource(BaseScraper):
