@@ -29,7 +29,7 @@ NONSTOP = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="true")
 
 
 def test_every_source_is_registered_by_name():
-    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli"}
+    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli", "skiplagged"}
     assert get_scraper_class("serpapi") is SerpApiScraper
 
 
@@ -307,6 +307,111 @@ def test_fli_not_installed_makes_the_source_unavailable(monkeypatch):
     monkeypatch.setitem(sys.modules, "fli.models", None)
     with pytest.raises(SourceUnavailableError, match="pip install flights"):
         FliScraper().search(QUERY)
+
+
+# --- Skiplagged -----------------------------------------------------------------------------
+
+def _sk_flight(*hops, airline="AA", day="2026-11-27"):
+    """A Skiplagged flight from (from, to, depart HH:MM, arrive HH:MM) hops, at -05:00."""
+    return {"segments": [{"airline": airline, "flight_number": 100 + n,
+                          "departure": {"time": f"{day}T{dep}:00-05:00", "airport": start},
+                          "arrival": {"time": f"{day}T{arr}:00-05:00", "airport": end},
+                          "duration": 3600}
+                         for n, (start, end, dep, arr) in enumerate(hops)]}
+
+
+def _sk_answer():
+    """Shaped like a real format=v3 answer: flights by key, priced per direction in cents."""
+    return {
+        "airlines": {"AA": {"name": "American Airlines"}},
+        "info": {"from": {"airports": ["MIA"]}, "to": {"airports": ["MCO"]}},
+        "flights": {
+            "o-nonstop": _sk_flight(("MIA", "MCO", "08:00", "09:00")),
+            "o-late": _sk_flight(("MIA", "MCO", "20:00", "21:00")),
+            "o-hidden": _sk_flight(("MIA", "MCO", "06:00", "07:00"), ("MCO", "ATL", "08:00", "09:30")),
+            "o-connect": _sk_flight(("MIA", "TPA", "06:00", "07:00"), ("TPA", "MCO", "08:00", "09:00")),
+            "i-nonstop": _sk_flight(("MCO", "MIA", "18:00", "19:00"), day="2026-11-29"),
+            "i-dear": _sk_flight(("MCO", "MIA", "12:00", "13:00"), day="2026-11-29"),
+        },
+        "itineraries": {
+            "outbound": [{"flight": "o-hidden", "one_way_price": 3900},  # cheapest, but flies on to ATL
+                         {"flight": "o-nonstop", "one_way_price": 8950},
+                         {"flight": "o-late", "one_way_price": 9900},
+                         {"flight": "o-connect", "one_way_price": 5000}],
+            "inbound": [{"flight": "i-nonstop", "one_way_price": 7000},
+                        {"flight": "i-dear", "one_way_price": 12000}],
+        },
+        "incomplete": True,
+    }
+
+
+def _skiplagged(monkeypatch, answer):
+    from flight_fare_scraper.scrapers.skiplagged import SkiplaggedScraper
+    calls = []
+
+    def respond(method, url, params=None, body=None, headers=None):
+        calls.append(params)
+        return answer
+    scraper = SkiplaggedScraper()
+    monkeypatch.setattr(scraper, "request", respond)
+    return scraper, calls
+
+
+def test_skiplagged_drops_hidden_city_fares_and_prices_two_one_ways(monkeypatch):
+    scraper, calls = _skiplagged(monkeypatch, _sk_answer())
+    rows = scraper.search(NONSTOP)
+    # The connection fails the nonstop filter and the hidden-city fare never counts.
+    assert sorted((row.outbound_depart[11:16], row.return_depart[11:16], row.price) for row in rows) == [
+        ("08:00", "12:00", 209.5), ("08:00", "18:00", 159.5), ("20:00", "18:00", 169.0)]
+    assert {row.outbound_to for row in rows} == {"MCO"} and rows[0].outbound_airline == "American Airlines"
+    assert rows[0].site == "skiplagged" and rows[0].outbound_arrive == "2026-11-27T09:00:00"  # local, no offset
+    assert calls == [{"from": "MIA", "to": "MCO", "depart": "2026-11-27", "return": "2026-11-29",
+                      "format": "v3", "counts[adults]": 1, "counts[children]": 0}]
+
+
+def test_skiplagged_keeps_connections_when_the_route_allows_them(monkeypatch):
+    query = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="false")
+    rows, _ = _skiplagged(monkeypatch, _sk_answer())
+    connecting = sorted((row for row in rows.search(query) if row.outbound_stops), key=lambda row: row.price)
+    # Now the cheapest outbound, so it's paired with both returns.
+    assert [row.price for row in connecting] == [120.0, 170.0]
+    assert connecting[0].outbound_layover_airports == "TPA" and connecting[0].outbound_layover_min == 60
+
+
+def test_skiplagged_with_no_usable_flight_one_way_is_an_empty_answer(monkeypatch):
+    answer = _sk_answer()
+    answer["itineraries"]["inbound"] = []
+    scraper, _ = _skiplagged(monkeypatch, answer)
+    assert scraper.search(NONSTOP) == []
+
+
+def test_skiplagged_challenges_and_refusals_count_as_blocks(monkeypatch):
+    from flight_fare_scraper.scrapers.base import CaptchaError
+    from flight_fare_scraper.scrapers.skiplagged import SkiplaggedScraper
+
+    class Page:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self.body
+    monkeypatch.setattr("urllib.request.urlopen",
+                        lambda *_a, **_k: Page(b"<html>Please complete the CAPTCHA</html>"))
+    with pytest.raises(CaptchaError):
+        SkiplaggedScraper().search(NONSTOP)
+
+    def refuse(*_args, **_kwargs):
+        raise _http_error(403, b"")
+    monkeypatch.setattr("urllib.request.urlopen", refuse)
+    with pytest.raises(BotBlockedError):
+        SkiplaggedScraper().search(NONSTOP)
+    assert SkiplaggedScraper.polite
 
 
 # --- in the runner --------------------------------------------------------------------------

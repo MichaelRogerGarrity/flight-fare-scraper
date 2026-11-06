@@ -441,6 +441,7 @@ route on the same day without overwriting each other.
 | `searchapi` | [SearchApi](https://www.searchapi.io/docs/google-flights-api): Google Flights | `FFS_SEARCHAPI_KEY` | 100 to try it | 1 + outbound options |
 | `flightpowers` | [FlightPowers](https://flightpowers.com/flights-api): Google Flights | `FFS_FLIGHTPOWERS_KEY` (RapidAPI) | 10 a month | 1 per airport pair |
 | `fli` | Google Flights read directly with [`fli`](https://github.com/punitarani/fli) (`pip install flights`) | -- | free | 1 + outbound options |
+| `skiplagged` | [Skiplagged](https://skiplagged.com)'s own search endpoint, read directly | -- | free | 1 |
 
 "Outbound options" (`FFS_GOOGLE_OUTBOUND_OPTIONS`, default 1) is how many outbound
 flights are paired with their returns. Google prices each outbound with its cheapest
@@ -458,13 +459,23 @@ the run, with no retries, and doesn't count as the site refusing us. `fli` asks 
 from this machine, so the cap applies to it as to Kayak, and a block there is a block on
 this connection's Google access: keep its share small.
 
+`skiplagged` prices each direction as its own one-way ticket, so its round trips are two
+tickets and cost their sum; Kayak and Google price one round-trip ticket, which can
+differ. Its hidden-city fares -- tickets that fly on past the destination, cheap only if
+you get off at the connection -- are dropped. Each flight it lists is stored paired with
+the other direction's cheapest. It has no bag, cabin or seller details. It answered
+GitHub's runners where Kayak and Google refuse them (docs/backup-fare-sources.md), and
+it's read directly, so the hourly cap applies to it.
+
 None of the API sources has been run against the live service yet; their parsers follow
 each provider's documented response, in `tests/test_sources.py`.
 
 ### Adding another source
 
-A Google Flights source subclasses `ApiScraper` (`scrapers/api.py`: key, requests, HTTP
-errors) or `ItinerarySource` (`scrapers/google_flights.py`) and only parses its response
+A source that answers in itineraries subclasses `ApiScraper` (`scrapers/api.py`: a key,
+and key or quota errors), `HttpSource` (`scrapers/http_source.py`: plain HTTP requests,
+refusals counted as blocks) or `ItinerarySource` (`scrapers/google_flights.py`), and
+only parses its response
 into `Itinerary` objects; the conversion to rows, the stops and time filters, and the
 per-search stats are shared. Anything else implements `BaseScraper`. Register it in
 `scrapers/__init__.py`.

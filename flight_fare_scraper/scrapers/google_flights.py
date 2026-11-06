@@ -1,9 +1,10 @@
 """Google Flights data, whichever way it arrives.
 
 SerpApi, SearchApi and FlightPowers all resell Google Flights results, and `fli` reads
-them directly; their responses differ only in shape. Each source parses its own into
-the Itinerary below, and `to_result` turns that into the FlightResult every other part
-of the project already stores -- so layover, stop and duration rules live in one place.
+them directly; their responses differ only in shape. Skiplagged isn't Google but answers
+in the same shape, so it uses this too. Each source parses its own into the Itinerary
+below, and `to_result` turns that into the FlightResult every other part of the
+project already stores -- so layover, stop and duration rules live in one place.
 
 What Google gives differs from Kayak: ~30 curated itineraries per search rather than a
 thousand seller listings, no per-seller prices, and no bag fees. Fields it doesn't have

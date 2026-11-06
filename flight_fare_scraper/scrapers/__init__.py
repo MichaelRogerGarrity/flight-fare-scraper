@@ -5,11 +5,13 @@ from .fli_source import FliScraper
 from .flightpowers import FlightPowersScraper
 from .kayak import KayakScraper
 from .serp_google import SearchApiScraper, SerpApiScraper
+from .skiplagged import SkiplaggedScraper
 
 # A route or query picks its source by name (`site`), which is also stored on each row.
 SCRAPERS: Dict[str, Type[BaseScraper]] = {
     scraper.name: scraper
-    for scraper in (KayakScraper, SerpApiScraper, SearchApiScraper, FlightPowersScraper, FliScraper)
+    for scraper in (KayakScraper, SerpApiScraper, SearchApiScraper, FlightPowersScraper, FliScraper,
+                    SkiplaggedScraper)
 }
 
 
