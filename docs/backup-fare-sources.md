@@ -169,6 +169,14 @@ late-December date); cheapest regular fares EUR 282-830. No challenge and no slo
 2 searches as before. So it's the home address that is flagged, not automation in
 general. Built as the `opodo` source (README, "Sources"), for runner workflows.
 
+**Its biggest gap: Delta, United and Southwest aren't sold.** The JFK-LAX answer listed
+only American, Alaska, Frontier and JetBlue; ATL-LAS (a Delta hub) had Frontier as its
+only nonstop, and BOS-DEN no nonstop at all, though both routes have several nonstop
+airlines. Each search's page gets one complete answer (logged on a runner, 2026-11-06),
+so this is Opodo's inventory, not a partial read. Its cheapest fare is the cheapest among
+the airlines it sells, which on many US routes is not the market's cheapest -- compare
+with Kayak before trusting it on a route.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`

@@ -484,6 +484,9 @@ metro code. A Cloudflare challenge in place of the fares counts as a CAPTCHA and
 the run. It answers GitHub's runners but, since 2026-11-06, challenges the home
 connection, so routes on it belong in a runner workflow. The hourly cap applies to it.
 
+**Opodo doesn't sell Delta, United or Southwest**, so on US routes where they fly its
+cheapest fare can be well above the market's (docs/backup-fare-sources.md).
+
 None of the API sources has been run against the live service yet; their parsers follow
 each provider's documented response, in `tests/test_sources.py`.
 
