@@ -442,6 +442,7 @@ route on the same day without overwriting each other.
 | `flightpowers` | [FlightPowers](https://flightpowers.com/flights-api): Google Flights | `FFS_FLIGHTPOWERS_KEY` (RapidAPI) | 10 a month | 1 per airport pair |
 | `fli` | Google Flights read directly with [`fli`](https://github.com/punitarani/fli) (`pip install flights`) | -- | free | 1 + outbound options |
 | `skiplagged` | [Skiplagged](https://skiplagged.com)'s own search endpoints, read directly | -- | free | 1, plus ~2 per round-trip ticket looked up (up to 3) |
+| `opodo` | [Opodo](https://www.opodo.com)'s search page, through a browser | -- | free | 1 page load (~25-45 s) |
 
 "Outbound options" (`FFS_GOOGLE_OUTBOUND_OPTIONS`, default 1) is how many outbound
 flights are paired with their returns. Google prices each outbound with its cheapest
@@ -469,6 +470,19 @@ off) at about 2 requests each. Its hidden-city fares -- tickets that fly on past
 destination, cheap only if you get off at the connection -- are dropped. It has no bag,
 cabin or seller details. It answered GitHub's runners where Kayak and Google refuse them
 (docs/backup-fare-sources.md), and it's read directly, so the hourly cap applies to it.
+
+`opodo` loads Opodo's search page in a plain headless browser (no stealth patches) and
+keeps the fares its page asks for. They are real round-trip tickets, priced as one, at
+the regular price (not the lower one for Opodo's paid Prime membership), with flight
+numbers, operating carriers, aircraft and a cabin-bag rule per leg (`carry_on_status`
+INCLUDED when both legs include one, otherwise UNKNOWN). Opodo prices in euros; they are
+stored in dollars at the European Central Bank's reference rate of the day, fetched once
+per run, or in euros (`currency` says which) if the rate can't be had. Day-to-day moves in
+the rate show up in the price history, typically well under 1%. Opodo searches whole city
+areas, so legs from other airports in the same city are dropped unless the route uses a
+metro code. A Cloudflare challenge in place of the fares counts as a CAPTCHA and stops
+the run. It answers GitHub's runners but, since 2026-11-06, challenges the home
+connection, so routes on it belong in a runner workflow. The hourly cap applies to it.
 
 None of the API sources has been run against the live service yet; their parsers follow
 each provider's documented response, in `tests/test_sources.py`.

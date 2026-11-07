@@ -4,6 +4,7 @@ from .base import BaseScraper
 from .fli_source import FliScraper
 from .flightpowers import FlightPowersScraper
 from .kayak import KayakScraper
+from .opodo import OpodoScraper
 from .serp_google import SearchApiScraper, SerpApiScraper
 from .skiplagged import SkiplaggedScraper
 
@@ -11,7 +12,7 @@ from .skiplagged import SkiplaggedScraper
 SCRAPERS: Dict[str, Type[BaseScraper]] = {
     scraper.name: scraper
     for scraper in (KayakScraper, SerpApiScraper, SearchApiScraper, FlightPowersScraper, FliScraper,
-                    SkiplaggedScraper)
+                    SkiplaggedScraper, OpodoScraper)
 }
 
 

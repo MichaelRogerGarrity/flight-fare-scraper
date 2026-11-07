@@ -1,8 +1,8 @@
 """Google Flights data, whichever way it arrives.
 
 SerpApi, SearchApi and FlightPowers all resell Google Flights results, and `fli` reads
-them directly; their responses differ only in shape. Skiplagged isn't Google but answers
-in the same shape, so it uses this too. Each source parses its own into the Itinerary
+them directly; their responses differ only in shape. Skiplagged and Opodo aren't Google
+but answer in the same shape, so they use this too. Each source parses its own into the Itinerary
 below, and `to_result` turns that into the FlightResult every other part of the
 project already stores -- so layover, stop and duration rules live in one place.
 
@@ -16,7 +16,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from .. import redact
 from ..models import FlightResult, SearchQuery
@@ -81,6 +81,7 @@ class Itinerary:
     currency: str = "USD"
     price_level: Optional[str] = None  # Google's own call: "low", "typical" or "high"
     booking_url: Optional[str] = None
+    extra: Dict[str, Any] = field(default_factory=dict)  # other FlightResult fields the source knows
 
 
 def _iso(moment: Optional[datetime]) -> Optional[str]:
@@ -145,6 +146,7 @@ def to_result(query: SearchQuery, itinerary: Itinerary, site: str) -> FlightResu
     for prefix, values in (("outbound", out), ("return", back)):
         for name, value in values.items():
             fields[f"{prefix}_{name}"] = value
+    fields.update(itinerary.extra)
     return FlightResult(**fields)
 
 

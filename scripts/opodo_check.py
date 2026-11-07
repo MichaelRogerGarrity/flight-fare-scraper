@@ -1,83 +1,47 @@
-"""A run of Opodo searches in a plain headless browser: does it keep answering?
+"""A run of Opodo searches through the `opodo` source: does it keep answering?
 
-Placeholder routes unrelated to anything this repo tracks; prints one line per search
-(challenge or not, itineraries, cheapest regular price) and a total. The fares arrive as
-the answer to Opodo's own `searchItinerary` GraphQL call, which the page makes.
+Placeholder routes unrelated to anything this repo tracks, one a metro code; prints one
+line per search (outcome, rows kept, nonstop rows, cheapest) and a total. Run from the
+repository root, so the package imports.
 
     python scripts/opodo_check.py SEARCHES PAUSE_SECONDS
 """
 
-import json
+import logging
 import sys
 import time
 from datetime import date, timedelta
 
-from playwright.sync_api import sync_playwright
+from flight_fare_scraper.config import build_query
+from flight_fare_scraper.scrapers.opodo import OpodoScraper
 
-from probe_sites import CHALLENGE
-
-ROUTES = [("JFK", "LAX"), ("BOS", "DEN"), ("ATL", "LAS"), ("SFO", "JFK"), ("SEA", "HNL"), ("MIA", "PHX")]
-FARES_PATH = "itinerary-selection-bff/service/graphql"
-REGULAR = "MEMBER_PRICE_POLICY_UNDISCOUNTED"  # the price without Opodo's paid membership
-WAIT_S = 45
-
-
-def search(context, origin, destination, depart, back):
-    page = context.new_page()
-    answers = []
-
-    def on_response(response):
-        if FARES_PATH in response.url:
-            try:
-                answers.append(json.loads(response.text()))
-            except Exception:
-                pass
-    page.on("response", on_response)
-    url = f"https://www.opodo.com/travel/#results/type=R;from={origin};to={destination};dep={depart};ret={back}"
-    started = time.monotonic()
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(WAIT_S * 1000)
-        text, title = page.inner_text("body"), page.title()
-    except Exception as error:
-        page.close()
-        return "FAILED", f"{type(error).__name__}", time.monotonic() - started
-    page.close()
-    challenge = CHALLENGE.search(text) or CHALLENGE.search(title)
-    itineraries = []
-    for answer in answers:
-        found = (((answer or {}).get("data") or {}).get("searchItinerary") or {}).get("itineraries") or []
-        if len(found) > len(itineraries):
-            itineraries = found
-    prices = [(fee["price"]["amount"], fee["price"]["currency"]) for item in itineraries
-              for fee in item.get("fees") or [] if fee.get("type") == REGULAR]
-    seconds = time.monotonic() - started
-    if challenge:
-        return "CHALLENGED", challenge.group(0), seconds
-    if not itineraries:
-        return "EMPTY", "no fares answer", seconds
-    detail = f"{len(itineraries):4d} itineraries"
-    if prices:
-        amount, currency = min(prices)
-        detail += f"  cheapest {currency} {amount:,.0f}"
-    return "ok", detail, seconds
+ROUTES = [("JFK", "LAX"), ("BOS", "DEN"), ("ATL", "LAS"), ("NYC", "SFO"), ("SEA", "HNL"), ("MIA", "PHX")]
 
 
 def main():
     searches, pause = int(sys.argv[1]), float(sys.argv[2])
+    logging.basicConfig(level=logging.WARNING)
     counts = {}
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(viewport={"width": 1280, "height": 900}, locale="en-US")
+    with OpodoScraper() as scraper:
         for i in range(searches):
             origin, destination = ROUTES[i % len(ROUTES)]
             depart = date.today() + timedelta(days=30 + 7 * (i // len(ROUTES)))
-            outcome, detail, seconds = search(context, origin, destination, depart, depart + timedelta(days=7))
+            query = build_query(origin, destination, depart.isoformat(), (depart + timedelta(days=7)).isoformat(),
+                                nonstop="false", site="opodo")
+            started = time.monotonic()
+            try:
+                rows = scraper.search(query)
+                outcome = "ok"
+                cheapest = min(rows, key=lambda row: row.price) if rows else None
+                detail = (f"{len(rows):4d} rows  {sum(1 for r in rows if not r.outbound_stops and not r.return_stops):4d}"
+                          f" nonstop  cheapest {cheapest.currency} {cheapest.price:,.0f}" if cheapest else "no rows")
+            except Exception as error:
+                outcome, detail = type(error).__name__, ""
             counts[outcome] = counts.get(outcome, 0) + 1
-            print(f"{i + 1:3d} {origin}-{destination} {depart}  {outcome:10s} {detail}  {seconds:4.0f}s", flush=True)
+            print(f"{i + 1:3d} {origin}-{destination} {depart}  {outcome:18s} {detail}  "
+                  f"{time.monotonic() - started:4.0f}s", flush=True)
             if i < searches - 1:
                 time.sleep(pause)
-        browser.close()
     print("\n" + ", ".join(f"{n} {outcome}" for outcome, n in counts.items()) + f" of {searches}")
 
 

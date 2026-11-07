@@ -29,7 +29,7 @@ NONSTOP = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="true")
 
 
 def test_every_source_is_registered_by_name():
-    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli", "skiplagged"}
+    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli", "skiplagged", "opodo"}
     assert get_scraper_class("serpapi") is SerpApiScraper
 
 
@@ -500,6 +500,141 @@ def test_skiplagged_challenges_and_refusals_count_as_blocks(monkeypatch):
     with pytest.raises(BotBlockedError):
         SkiplaggedScraper().search(NONSTOP)
     assert SkiplaggedScraper.polite
+
+
+# --- Opodo ----------------------------------------------------------------------------------
+
+def _op_answer():
+    """Shaped like a real searchItinerary answer: itineraries point at segments (one per
+    leg), which point at sections (one per flight), with places and carriers by id."""
+    places = {"1": "MIA", "2": "MCO", "3": "FLL", "4": "TPA"}
+    sections = {  # id: (from, to, depart, arrive, carrier, operator)
+        "s1": ("1", "2", "2026-11-27T08:00:00-05:00", "2026-11-27T09:00:00-05:00", "AA", "AA"),
+        "s2": ("2", "1", "2026-11-29T18:00:00-05:00", "2026-11-29T19:00:00-05:00", "AA", "YX"),
+        "s3": ("3", "2", "2026-11-27T07:00:00-05:00", "2026-11-27T08:00:00-05:00", "B6", "B6"),
+        "s4": ("1", "4", "2026-11-27T06:00:00-05:00", "2026-11-27T07:00:00-05:00", "AA", "AA"),
+        "s5": ("4", "2", "2026-11-27T08:00:00-05:00", "2026-11-27T09:00:00-05:00", "AA", "AA"),
+    }
+    segments = {"g-out": ["s1"], "g-back": ["s2"], "g-fll": ["s3"], "g-connect": ["s4", "s5"]}
+
+    def itinerary(out, back, regular, member):
+        return {"legs": [{"segmentKey": "0", "segmentId": out}, {"segmentKey": "0", "segmentId": back}],
+                "fees": [{"type": "MEMBER_PRICE_POLICY_UNDISCOUNTED", "price": {"amount": regular, "currency": "EUR"}},
+                         {"type": "MEMBER_PRICE_POLICY_DISCOUNTED", "price": {"amount": member, "currency": "EUR"}}]}
+    return {
+        "itineraries": [itinerary("g-out", "g-back", 200.0, 180.0), itinerary("g-out", "g-back", 190.0, 170.0),
+                        itinerary("g-fll", "g-back", 150.0, 140.0), itinerary("g-connect", "g-back", 120.0, 110.0)],
+        "segments": [{"id": key, "segment": {"id": key, "sections": ids, "duration": 60 if len(ids) == 1 else 180,
+                                             "baggageCondition": "BASED_ON_AIRLINE" if key == "g-back"
+                                             else "CABIN_INCLUDED"}}
+                     for key, ids in segments.items()],
+        "sections": [{"id": key, "section": {"id": key, "departureId": start, "destinationId": end,
+                                             "departureDate": dep, "arrivalDate": arr, "duration": 60,
+                                             "carrierId": carrier, "operatingCarrierId": operator,
+                                             "flightCode": f"{carrier}100", "cabinClass": "TOURIST",
+                                             "vehicleModel": "738"}}
+                     for key, (start, end, dep, arr, carrier, operator) in sections.items()],
+        "locations": [{"id": key, "location": {"id": key, "iata": iata}} for key, iata in places.items()],
+        "carriers": [{"id": code, "carrier": {"id": code, "name": name}}
+                     for code, name in (("AA", "American Airlines"), ("YX", "Republic Airways"), ("B6", "JetBlue"))],
+    }
+
+
+class _OpPage:
+    """A browser page that answers the fares call with the given (status, body) replies."""
+
+    def __init__(self, replies, title="Opodo"):
+        self.replies, self.page_title, self.handlers, self.urls = replies, title, [], []
+
+    def on(self, event, handler):
+        self.handlers.append(handler)
+
+    def goto(self, url, **_):
+        self.urls.append(url)
+        for status, body in self.replies:
+            response = types.SimpleNamespace(url="https://www.opodo.com/itinerary-selection-bff/service/graphql",
+                                             status=status, request=types.SimpleNamespace(method="POST"),
+                                             text=lambda body=body: body)
+            for handler in self.handlers:
+                handler(response)
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+    def title(self):
+        return self.page_title
+
+    def close(self):
+        pass
+
+
+def _opodo(replies, title="Opodo", rate=lambda: 1.1):
+    from flight_fare_scraper.scrapers.opodo import OpodoScraper
+    scraper = OpodoScraper(fares_timeout_s=0.05, settle_s=0, usd_rate=rate)
+    page = _OpPage(replies, title)
+    scraper._context = types.SimpleNamespace(new_page=lambda: page)
+    return scraper, page
+
+
+def _fares(found):
+    return 200, json.dumps({"data": {"searchItinerary": found}})
+
+
+def test_opodo_keeps_the_regular_price_in_dollars_between_the_querys_own_airports():
+    scraper, page = _opodo([_fares({"itineraries": []}), _fares(_op_answer())])
+    rows = scraper.search(NONSTOP)
+    # One row per pair of legs, at its cheaper regular price; the Fort Lauderdale
+    # departure is another airport in the city and the connection isn't nonstop.
+    assert [(row.price, row.currency) for row in rows] == [(209.0, "USD")]
+    row = rows[0]
+    assert (row.site, row.booking_provider, row.cabin_class) == ("opodo", "Opodo", "Economy")
+    assert row.outbound_airline == "American Airlines" and row.outbound_operated_by is None
+    assert row.return_operated_by == "Republic Airways"  # a codeshare
+    assert row.outbound_depart == "2026-11-27T08:00:00" and row.return_to == "MIA"  # local, no offset
+    assert row.outbound_equipment == "738" and row.outbound_duration_min == 60
+    assert (row.carry_on_status, row.carry_on_fee) == ("UNKNOWN", None)  # the return's depends on the airline
+    assert page.urls == ["https://www.opodo.com/travel/#results/type=R;from=MIA;to=MCO;"
+                         "dep=2026-11-27;ret=2026-11-29"]
+    assert scraper.last_stats["main"]["pages_fetched"] == 1
+
+
+def test_opodo_keeps_connections_when_the_route_allows_them():
+    query = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="false")
+    scraper, _ = _opodo([_fares(_op_answer())])
+    connecting = [row for row in scraper.search(query) if row.outbound_stops]
+    assert [(row.price, row.outbound_layover_airports, row.outbound_duration_min) for row in connecting] == [
+        (132.0, "TPA", 180)]
+
+
+def test_opodo_keeps_euros_when_there_is_no_rate():
+    def no_rate():
+        raise OSError("offline")
+    scraper, _ = _opodo([_fares(_op_answer())], rate=no_rate)
+    assert [(row.price, row.currency) for row in scraper.search(NONSTOP)] == [(190.0, "EUR")]
+
+
+def test_opodo_both_cabin_bags_included():
+    answer = _op_answer()
+    for segment in answer["segments"]:
+        segment["segment"]["baggageCondition"] = "CABIN_INCLUDED"
+    scraper, _ = _opodo([_fares(answer)])
+    assert [(row.carry_on_status, row.carry_on_fee) for row in scraper.search(NONSTOP)] == [("INCLUDED", 0.0)]
+
+
+def test_opodo_challenges_and_silence():
+    from flight_fare_scraper.scrapers.base import CaptchaError
+    challenge = "<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>"
+    scraper, _ = _opodo([(403, challenge), (403, challenge)])
+    with pytest.raises(CaptchaError):
+        scraper.search(NONSTOP)
+    scraper, _ = _opodo([(429, "")])
+    with pytest.raises(BotBlockedError):
+        scraper.search(NONSTOP)
+    scraper, _ = _opodo([])
+    with pytest.raises(SearchTimeoutError):
+        scraper.search(NONSTOP)
+    scraper, _ = _opodo([_fares({"itineraries": []})])
+    assert scraper.search(NONSTOP) == []  # answered, with no flights
 
 
 # --- in the runner --------------------------------------------------------------------------

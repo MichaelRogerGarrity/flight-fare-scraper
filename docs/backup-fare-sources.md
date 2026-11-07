@@ -164,6 +164,11 @@ operation `searchItinerary`. Its answer:
 minutes, six routes, departures 31-52 days out. 35-811 itineraries each (the 35 was a
 late-December date); cheapest regular fares EUR 282-830. No challenge and no slowing.
 
+**2026-11-06:** Opodo began answering the home connection with a Cloudflare challenge
+(HTTP 403, "Just a moment...") on every fares call, while a runner the same hour got 2 of
+2 searches as before. So it's the home address that is flagged, not automation in
+general. Built as the `opodo` source (README, "Sources"), for runner workflows.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`
