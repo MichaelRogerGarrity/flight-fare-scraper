@@ -46,9 +46,34 @@ SITES = {
     "jetcost": "https://www.jetcost.com/en/flights/search?adults=1&children=0&infants=0&cabin_class=economy"
                "&trips[0][from_iata]=BOS&trips[0][to_iata]=DEN&trips[0][date]=2026-12-08"
                "&trips[1][from_iata]=DEN&trips[1][to_iata]=BOS&trips[1][date]=2026-12-15",
+    "united": "https://www.united.com/en/us/fsr/choose-flights?f=BOS&t=DEN&d=2026-12-08&r=2026-12-15&px=1&taxng=1"
+              "&newHP=True&clm=7&st=bestmatches&tqp=R",
+    "american": "https://www.aa.com/booking/search?locale=en_US&pax=1&adult=1&type=RoundTrip&searchType=Revenue&cabin="
+                "&carriers=ALL&slices=%5B%7B%22orig%22:%22BOS%22,%22origNearby%22:false,%22dest%22:%22DEN%22,"
+                "%22destNearby%22:false,%22date%22:%222026-12-08%22%7D,%7B%22orig%22:%22DEN%22,%22origNearby%22:false,"
+                "%22dest%22:%22BOS%22,%22destNearby%22:false,%22date%22:%222026-12-15%22%7D%5D",
+    "delta": "https://www.delta.com/flightsearch/book-a-flight?tripType=ROUND_TRIP&fromCity=BOS&toCity=DEN"
+             "&departureDate=12/08/2026&returnDate=12/15/2026&paxCount=1",
+    "southwest": "https://www.southwest.com/air/booking/select-depart.html?adultPassengersCount=1&departureDate=2026-12-08"
+                 "&destinationAirportCode=DEN&originationAirportCode=BOS&returnDate=2026-12-15&tripType=roundtrip&fareType=USD",
+    "jetblue": "https://www.jetblue.com/booking/flights?from=BOS&to=DEN&depart=2026-12-08&return=2026-12-15"
+               "&isMultiCity=false&noOfRoute=1&adults=1&children=0&infants=0&sharedMarket=false&roundTripFaresFlag=false&usePoints=false",
+    "alaska": "https://www.alaskaair.com/search/results?A=1&O=BOS&D=DEN&OD=2026-12-08&DD=2026-12-15&RT=true",
+    "frontier": "https://booking.flyfrontier.com/Flight/InternalSelect?o1=BOS&d1=DEN&dd1=Dec%2008,%202026"
+                "&dd2=Dec%2015,%202026&ADT=1&mon=true",
+    "cheapoair": "https://www.cheapoair.com/air/listing?&d1=BOS&r1=DEN&dt1=12/08/2026&d2=DEN&r2=BOS&dt2=12/15/2026"
+                 "&tripType=ROUNDTRIP&cl=ECONOMY&ad=1&se=0&ch=0&infl=0&infs=0",
+    "hopper": "https://hopper.com/flights/BOS-DEN/2026-12-08/2026-12-15",
+    "studentuniverse": "https://www.studentuniverse.com/flights/search?origin=BOS&destination=DEN&departDate=2026-12-08"
+                       "&returnDate=2026-12-15&adults=1&tripType=roundtrip",
+    "flightcentre": "https://www.flightcentre.com/flights/search?origin=BOS&destination=DEN&departureDate=2026-12-08"
+                    "&returnDate=2026-12-15&adults=1&tripType=return",
+    "lastminute": "https://www.lastminute.com/flights/search?from=BOS&to=DEN&departureDate=2026-12-08&returnDate=2026-12-15&adults=1",
+    "cheapflights": "https://www.cheapflights.com/flight-search/BOS-DEN/2026-12-08/2026-12-15",
+    "kiwi": "https://www.kiwi.com/en/search/results/boston-massachusetts-united-states/denver-colorado-united-states/2026-12-08/2026-12-15",
 }
 CHALLENGE = re.compile(r"captcha|are you a (human|robot)|verify you are|press (&|and) hold|access denied|"
-                       r"unusual traffic|just a moment|pardon our interruption|bot or not", re.I)
+                       r"unusual traffic|just a moment|pardon our interruption|bot or not|request unsuccessful|blocked", re.I)
 PRICE_FIELD = re.compile(r'"(price|amount|value|total)"\s*:\s*\{?\s*"?\d', re.I)
 AIRLINES = ("Delta", "United", "Southwest", "American", "JetBlue", "Frontier", "Spirit", "Alaska")
 WAIT_S = 35

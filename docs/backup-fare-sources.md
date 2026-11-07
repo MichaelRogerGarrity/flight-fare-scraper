@@ -177,6 +177,46 @@ so this is Opodo's inventory, not a partial read. Its cheapest fare is the cheap
 the airlines it sells, which on many US routes is not the market's cheapest -- compare
 with Kayak before trusting it on a route.
 
+## Which sites sell every airline (2026-11-06)
+
+Opodo lacks Delta, United and Southwest, so the search went on, from GitHub's runners
+only (to keep the home connection out of it), on BOS-DEN 8-15 Dec 2026, a route United
+and Southwest fly nonstop and Delta and American with connections (`scripts/probe_sites.py`).
+
+| site | from a runner | airlines it sells |
+| --- | --- | --- |
+| **Almosafer** (Saudi agency, Amadeus) | fares, no challenge -- but a guest token, so only through its page | Delta, United, American, Southwest, Alaska; **no JetBlue, Frontier or Spirit** |
+| **Agoda** | fares, no challenge | Southwest, JetBlue, American, Alaska, Frontier, Sun Country; **no Delta or United** |
+| Frontier's own site | fares, no challenge | Frontier only |
+| Google Flights | page loads; its fares call comes back empty | -- |
+| Priceline | PerimeterX "Press & Hold" | -- |
+| Expedia, Orbitz | "Bot or Not?" (HTTP 429) | -- |
+| American, Delta | Access Denied (403, 444) | -- |
+| JetBlue, Alaska, Hopper | challenge pages | -- |
+| Southwest | its search page answers a deep link with an error | -- |
+| CheapOair | drops the deep link to its home page; sells no Delta anyway | -- |
+| StudentUniverse, lastminute.com, JetCost | Cloudflare challenge | -- |
+| Kiwi | 403 | -- |
+| Traveloka | "confirm you are human" | -- |
+| MakeMyTrip | wouldn't load | -- |
+
+The cheapest round trip by outbound airline on six placeholder routes, from Almosafer,
+Agoda and Skiplagged the same evening, showed what coverage alone hides:
+- Almosafer's American and United fares ran well above the others' where all three
+  had them (DFW-SFO: $414 against $262), apparently because Basic Economy isn't sold
+  through Amadeus. Its Southwest and Delta fares were in line.
+- Skiplagged's single request was incomplete on most routes (ATL-LAS: only Frontier;
+  another: nothing).
+- Agoda's first page of 20 results isn't enough to find each airline's cheapest.
+
+**Conclusion: no free site we can read sells every airline at its lowest fare.** The two
+that do are Kayak and Google Flights, and both refuse GitHub's runners. Southwest's fares
+have been on both since 2024. So the all-airline source for runners is Google Flights
+through a service that fetches it for us: Apify's Google Flights API actor
+($0.20 per 1,000 rows, $5 free a month), built as `apify_google` (README, "Sources"),
+not yet run live. SerpApi and SearchApi (`serpapi`, `searchapi`) are the same data at a
+higher price.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`
@@ -205,4 +245,6 @@ with Kayak before trusting it on a route.
 - [Skiplagged terms](https://skiplagged.com/terms) and [Kayak terms of use](https://www.kayak.com/terms-of-use)
 - [fast-flights](https://github.com/AWeirdDev/flights)
 - [Opodo](https://www.opodo.com/)
+- [Apify: Google Flights API actor](https://apify.com/lergassy/google-flights-api) and [Apify pricing](https://apify.com/pricing)
+- [Southwest fares on Google Flights](https://thriftytraveler.com/news/airlines/southwest-fares-now-appear-on-google-flights/) and [on Kayak](https://onemileatatime.com/news/southwest-airlines-flights-kayak/)
 - [Skyscanner Travel API eligibility](https://skyscannerpartnersupport.zendesk.com/hc/en-us/articles/25486916837405-What-is-the-acceptance-criteria-for-being-eligible-for-the-Car-Hire-API)

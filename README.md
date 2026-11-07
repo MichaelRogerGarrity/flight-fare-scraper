@@ -443,6 +443,7 @@ route on the same day without overwriting each other.
 | `fli` | Google Flights read directly with [`fli`](https://github.com/punitarani/fli) (`pip install flights`) | -- | free | 1 + outbound options |
 | `skiplagged` | [Skiplagged](https://skiplagged.com)'s own search endpoints, read directly | -- | free | 1, plus ~2 per round-trip ticket looked up (up to 3) |
 | `opodo` | [Opodo](https://www.opodo.com)'s search page, through a browser | -- | free | 1 page load (~25-45 s) |
+| `apify_google` | Google Flights through Apify's [Google Flights API](https://apify.com/lergassy/google-flights-api) actor | `FFS_APIFY_TOKEN` | $5 of usage a month (~25,000 rows) | 1 actor run (2 if the cheapest all connect) |
 
 "Outbound options" (`FFS_GOOGLE_OUTBOUND_OPTIONS`, default 1) is how many outbound
 flights are paired with their returns. Google prices each outbound with its cheapest
@@ -486,6 +487,19 @@ connection, so routes on it belong in a runner workflow. The hourly cap applies 
 
 **Opodo doesn't sell Delta, United or Southwest**, so on US routes where they fly its
 cheapest fare can be well above the market's (docs/backup-fare-sources.md).
+
+`apify_google` is the one source here with every US airline -- Delta, United, American,
+Southwest, JetBlue, Alaska and the low-cost carriers, Basic Economy fares included --
+reachable from anywhere: the actor fetches Google Flights through its own proxies, so a
+block on GitHub's runners or on this connection doesn't touch it. It bills $0.20 per 1,000
+rows (an outbound itinerary, with its returns inside it), and Apify's free plan includes $5
+of usage a month. Each search asks for the `FFS_APIFY_OUTBOUNDS` cheapest outbounds
+(default 5), each with up to 20 of its returns priced as the round trip's total, so ~5 rows
+a search: ~250 searches a day is ~37,500 rows, ~$7.50, a month. The actor's fallback to
+Kayak is off. Its documentation doesn't spell out the keys inside each row's legs and
+returns, so check the first live run before relying on flight-level detail. Setup: an
+Apify account (the free plan is enough to start), and its API token from Settings ->
+API & Integrations in `FFS_APIFY_TOKEN`.
 
 None of the API sources has been run against the live service yet; their parsers follow
 each provider's documented response, in `tests/test_sources.py`.

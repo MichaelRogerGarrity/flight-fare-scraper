@@ -29,7 +29,7 @@ NONSTOP = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="true")
 
 
 def test_every_source_is_registered_by_name():
-    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli", "skiplagged", "opodo"}
+    assert set(SCRAPERS) == {"kayak", "serpapi", "searchapi", "flightpowers", "fli", "skiplagged", "opodo", "apify_google"}
     assert get_scraper_class("serpapi") is SerpApiScraper
 
 
@@ -635,6 +635,93 @@ def test_opodo_challenges_and_silence():
         scraper.search(NONSTOP)
     scraper, _ = _opodo([_fares({"itineraries": []})])
     assert scraper.search(NONSTOP) == []  # answered, with no flights
+
+
+# --- Apify (Google Flights) ------------------------------------------------------------------
+
+def _ap_row(dep, arr, price, stops=0, returns=(), frm="MIA", to="MCO", day="2026-11-27", airline="Delta"):
+    """A flight row as the actor documents it, with legs and return options."""
+    legs = [{"flightNumber": "DL 100", "airline": airline, "from": frm, "to": to,
+             "departAt": f"{day}T{dep}", "arriveAt": f"{day}T{arr}", "durationMinutes": 60, "aircraft": "A321"}]
+    if stops:
+        legs = [dict(legs[0], to="ATL", arriveAt=f"{day}T07:00"),
+                dict(legs[0], **{"from": "ATL", "departAt": f"{day}T08:00", "flightNumber": "DL 200"})]
+    return {"type": "flight", "price": price, "currency": "USD", "priceLevel": "typical", "airline": airline,
+            "airlineCodes": ["DL"], "stops": stops, "departAt": f"{day}T{dep}", "arriveAt": f"{day}T{arr}",
+            "totalDurationMinutes": 60 if not stops else 180, "legs": legs,
+            "layovers": [{"airport": "ATL", "durationMinutes": 60}] if stops else [],
+            "returnOptions": list(returns)}
+
+
+def _ap_return(dep, arr, total, frm="MCO", to="MIA"):
+    row = _ap_row(dep, arr, None, frm=frm, to=to, day="2026-11-29")
+    del row["returnOptions"]
+    return dict(row, totalPrice=total)
+
+
+def _apify(monkeypatch, *answers, token="tok"):
+    from flight_fare_scraper.scrapers.apify_google import ApifyGoogleScraper
+    monkeypatch.setenv("FFS_APIFY_TOKEN", token)
+    scraper = ApifyGoogleScraper().__enter__()
+    scraper.sent, replies = [], list(answers)
+
+    def respond(method, url, params=None, body=None, headers=None):
+        scraper.sent.append({"method": method, "url": url, "params": params, "body": body, "headers": headers})
+        return replies.pop(0)
+    monkeypatch.setattr(scraper, "request", respond)
+    return scraper
+
+
+def test_apify_stores_each_outbound_with_its_returns_at_the_round_trip_total(monkeypatch):
+    answer = [{"type": "notice", "message": "run totals"},
+              _ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150), _ap_return("12:00", "13:00", 171)]),
+              _ap_row("08:30", "09:30", 160, frm="FLL", returns=[_ap_return("18:00", "19:00", 160)])]
+    scraper = _apify(monkeypatch, answer)
+    rows = scraper.search(NONSTOP)
+    # The Fort Lauderdale departure is another airport, not the query's.
+    assert sorted((row.return_depart[11:16], row.price) for row in rows) == [("12:00", 171.0), ("18:00", 150.0)]
+    row = rows[0]
+    assert (row.site, row.currency, row.price_prediction) == ("apify_google", "USD", "typical")
+    assert row.outbound_airline == "Delta" and row.outbound_from == "MIA" and row.return_to == "MIA"
+    assert row.outbound_depart == "2026-11-27T08:00:00" and row.outbound_equipment == "A321"
+    sent = scraper.sent[0]
+    assert sent["method"] == "POST" and "lergassy~google-flights-api" in sent["url"] and sent["params"] is None
+    assert sent["headers"] == {"Authorization": "Bearer tok"}  # never in the URL
+    body = sent["body"]
+    assert (body["origin"], body["destination"], body["departureDate"], body["returnDate"]) == (
+        "MIA", "MCO", "2026-11-27", "2026-11-29")
+    assert body["maxStops"] == "0" and body["resolveReturnFlights"] is True and body["kayakWhenGoogleEmpty"] is False
+    assert body["maxResults"] == body["maxReturnResolutions"] == 5
+
+
+def test_apify_asks_again_for_nonstops_when_the_cheapest_all_connect(monkeypatch):
+    query = build_query("MIA", "MCO", "2026-11-27", "2026-11-29", nonstop="false")
+    connecting = [_ap_row("06:00", "09:00", 120, stops=1, returns=[_ap_return("18:00", "19:00", 120)])]
+    nonstop = [_ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150)])]
+    scraper = _apify(monkeypatch, connecting, nonstop)
+    rows = scraper.search(query)
+    assert [s["body"]["maxStops"] for s in scraper.sent] == ["any", "0"]
+    assert sorted((row.price, row.outbound_stops, row.outbound_layover_airports) for row in rows) == [
+        (120.0, 1, "ATL"), (150.0, 0, None)]
+
+
+def test_apify_without_a_token_or_credit_is_unavailable(monkeypatch):
+    from flight_fare_scraper.scrapers.apify_google import ApifyGoogleScraper
+    monkeypatch.delenv("FFS_APIFY_TOKEN", raising=False)
+    with ApifyGoogleScraper() as scraper:
+        with pytest.raises(SourceUnavailableError, match="FFS_APIFY_TOKEN"):
+            scraper.search(NONSTOP)
+    assert ApifyGoogleScraper().http_error(402, "").__class__ is SourceUnavailableError
+    assert not ApifyGoogleScraper.polite
+
+
+def test_apify_summary_fields_fill_in_when_a_row_has_no_legs(monkeypatch):
+    row = _ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150)])
+    row.pop("legs")
+    row["returnOptions"][0].pop("legs")
+    rows = _apify(monkeypatch, [row]).search(NONSTOP)
+    assert [(r.outbound_airline, r.outbound_depart, r.outbound_stops, r.return_arrive) for r in rows] == [
+        ("Delta", "2026-11-27T08:00:00", 0, "2026-11-29T19:00:00")]
 
 
 # --- in the runner --------------------------------------------------------------------------
