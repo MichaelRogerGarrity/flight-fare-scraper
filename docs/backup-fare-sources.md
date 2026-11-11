@@ -217,6 +217,33 @@ through a service that fetches it for us: Apify's Google Flights API actor
 not yet run live. SerpApi and SearchApi (`serpapi`, `searchapi`) are the same data at a
 higher price.
 
+## Connectors for AI assistants (MCP servers, 2026-11-11)
+
+Travel sites now publish MCP servers -- their own doors for AI assistants -- which the
+earlier surveys missed. Found through Claude's connector directory and the official MCP
+registry (registry.modelcontextprotocol.io, 193 flight-related entries), and called from
+the home connection with a plain MCP client, BOS-DEN 8-15 Dec 2026 and five more
+placeholder routes:
+
+| connector | answers without a login | what it gives |
+| --- | --- | --- |
+| Expedia (`expedia.com/mcp`, in Claude's directory) | no: a bare 403 to anything but, apparently, AI platforms' own servers | -- |
+| SlickTrip | lists its tools, but searching needs a SlickTrip login | -- |
+| LetsFG, Ignav, FlightPowers, Alice | need an account or key | -- |
+| ToolOracle | needs a registered key (500 free units a month) | -- |
+| lastminute.com | Cloudflare challenge | -- |
+| eDreams | "Request blocked" | (Opodo's group: same airline gaps) |
+| **wondel.ai Google Flights** | yes, free, no stated quota | SerpApi's Google Flights answer as-is -- every airline, Southwest included, with price insights and returns. **But its legal notice forbids querying "in bulk or systematically" and building "price databases from the results"**: personal lookups only |
+| **Skiplagged** (`mcp.skiplagged.com`) | yes | up to 100 rows, hidden-city fares can be switched off -- but every outbound is paired with one cheapest one-way return, mostly separate tickets on another airline, all labelled "standard"; JFK-LAX came back priced $0; no Southwest |
+| **Kiwi.com** (`mcp.kiwi.com`, official) | yes, fast (1-7 s) | real round trips with bags, but 15 results, and **no Delta, United, American or Southwest at all** (asked for each by code: none) |
+| **Octotrip** | yes, free, 1 request/s | Aviasales' live search: 6 curated results of 2,600-5,000, mostly from small resale agencies; no Delta seen |
+| Pointify | yes, but its terms bar automated use beyond its paid API tiers | Duffel, Google Flights and award seats |
+
+So the connectors change nothing for a free, every-airline, automated source: the one
+with full Google data forbids building a price history from it, and the rest are missing
+the big four airlines or pair fares oddly. Expedia's and SlickTrip's remain useful inside
+the Claude app for looking a fare up by hand.
+
 ## If we switch
 
 - **Add it beside Kayak, not instead of it.** It fits the existing `BaseScraper`
