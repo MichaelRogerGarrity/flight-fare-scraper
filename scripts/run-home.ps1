@@ -29,7 +29,7 @@ param(
     # cooldown, ramp -- are in the spec's "load" section, not here.
     [int]$CooldownCheckMinutes = 30,
     [string]$GiveUpAt = "22:00",
-    # Routes on these sources run first, each day, in a run of their own: they don't touch
+    # Routes on these sources run alongside Kayak, in a run of their own: they don't touch
     # this connection, so Kayak's cooldown, ramp and CAPTCHA stop don't apply to them.
     # They need their key in the environment (for apify_google, FFS_APIFY_TOKEN).
     [string]$ApiSites = "apify_google",
@@ -60,13 +60,15 @@ if ($started.TimeOfDay -lt [timespan]::Parse($NotBefore)) { exit 0 }
 $giveUp = $started.Date + [timespan]::Parse($GiveUpAt)
 $utc = { param($t) $t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") + "+00:00" }
 
-# One `track` run. The snapshot date is pinned to the day the script started, even if a
-# run finishes after midnight; --resume skips what today already recorded.
-function Invoke-Track([string]$RunId, [string[]]$Extra) {
+# One `track` run's command line. The snapshot date is pinned to the day the script
+# started, even if a run finishes after midnight; --resume skips what today already
+# recorded. Each run that can be going at once has its own database (DuckDB lets one
+# process open a file) and log.
+function Get-TrackCommand([string]$RunId, [string]$Db, [string]$Log, [string[]]$Extra) {
     $arguments = @(
         "-m", "flight_fare_scraper.cli", "track",
         "--spec", $Spec,
-        "--db", "home-runs/home.duckdb",
+        "--db", $Db,
         "--run-id", $RunId,
         "--snapshot-date", $started.ToString("yyyy-MM-dd"),
         "--resume",
@@ -75,28 +77,40 @@ function Invoke-Track([string]$RunId, [string[]]$Extra) {
         "--summary", "home-runs/summary-$RunId.json",
         # A CAPTCHA, bot pages or the breaker leave a one-line alert here (see the README).
         "--alert-dir", "home-runs/alerts",
-        "--log-file", "home-runs/home.log"
+        "--log-file", $Log
     ) + $Extra | ForEach-Object { "`"$_`"" }
 
     # Through cmd.exe, which does the redirecting: Windows PowerShell turns a native
     # program's first line on stderr -- where Python logs -- into a terminating error under
     # "Stop", which ended the first scheduled run at its first log line.
     #
-    # Ending the task in Task Scheduler stops only this script, not the run. To stop a run:
+    # Ending the task in Task Scheduler stops only this script, not the runs. To stop them:
     #   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'flight_fare_scraper' |
     #       % { taskkill /PID $_.ProcessId /T /F }
-    # --resume picks up where it stopped next time.
-    & cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$RunId.txt`" 2>&1`""
-    return $LASTEXITCODE
+    # --resume picks up where they stopped next time.
+    return "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$RunId.txt`" 2>&1`""
 }
 
-# The API sources first: minutes, not hours, and nothing Kayak's state can hold up. Their
-# own limits (for Apify, today's share of the month's free credit) live in the source.
-# A failure here is logged in its own run file and doesn't stop the Kayak run.
+# The API sources run alongside Kayak, in a run of their own: they don't touch this
+# connection, so Kayak's cooldown, ramp and CAPTCHA stop don't apply, and a failure there
+# is logged in its own run file and doesn't stop Kayak's run. Their own limits (for Apify,
+# today's share of the month's free credit) live in the source.
+$api = $null
 if ($ApiSites) {
     $apiId = "home-api-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmss")
-    $apiCode = Invoke-Track $apiId @("--sites", $ApiSites, "--level", $ApiLevel)
-    if ($apiCode -ne 0) { Write-Warning "API sources run exited $apiCode; see home-runs/run-$apiId.txt" }
+    $apiCommand = Get-TrackCommand $apiId "home-runs/home-api.duckdb" "home-runs/home-api.log" `
+        @("--sites", $ApiSites, "--level", $ApiLevel)
+    $api = Start-Process cmd.exe -ArgumentList "/c $apiCommand" -NoNewWindow -PassThru
+    $null = $api.Handle  # keeps the exit code readable once it ends
+}
+
+# Wait for the API run before ending, so the task shows as running until both are done.
+function Exit-Run([int]$Code) {
+    if ($api) {
+        $api.WaitForExit()
+        if ($api.ExitCode -ne 0) { Write-Warning "API sources run exited $($api.ExitCode); see home-runs/run-$apiId.txt" }
+    }
+    exit $Code
 }
 
 while ($true) {
@@ -104,7 +118,7 @@ $now = Get-Date
 $runId = "home-" + $now.ToUniversalTime().ToString("yyyyMMddTHHmmss")
 
 # One process does Kayak's whole day here, so pacing has no later shards to leave room for.
-$code = Invoke-Track $runId @(
+$kayakCommand = Get-TrackCommand $runId "home-runs/home.duckdb" "home-runs/home.log" @(
     "--sites", "kayak",
     "--max-pages", "$MaxPages",
     "--pace-until", (& $utc $now.AddHours($TargetHours)),
@@ -113,10 +127,12 @@ $code = Invoke-Track $runId @(
     # The load ramp's level and the last refusal, kept between runs.
     "--load-state", "home-runs/load-state.json"
 )
+& cmd.exe /c $kayakCommand
+$code = $LASTEXITCODE
 
 # 3: cooling down after a refusal, nothing searched. The cooldown may end later today --
 # the 9:00 start already gone -- so wait and ask again rather than lose the day.
-if ($code -ne 3) { exit $code }
-if ((Get-Date).AddMinutes($CooldownCheckMinutes) -gt $giveUp) { exit 0 }
+if ($code -ne 3) { Exit-Run $code }
+if ((Get-Date).AddMinutes($CooldownCheckMinutes) -gt $giveUp) { Exit-Run 0 }
 Start-Sleep -Seconds ($CooldownCheckMinutes * 60)
 }

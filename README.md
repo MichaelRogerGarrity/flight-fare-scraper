@@ -351,12 +351,15 @@ start is missed" so it still runs on days the machine is off at the scheduled ti
 late start just shifts the day's run: the snapshot date is pinned to the day the run
 started, and no search starts more than 20 hours in (`-DeadlineHours`).
 
-**Two runs a day, one per kind of source.** Routes on an API source -- `apify_google`
-(`-ApiSites`) -- run first, in a run of their own (`track --sites apify_google --level full`):
-minutes, not hours, and nothing that touches this connection, so Kayak's cooldown, ramp
-and CAPTCHA stop don't hold them up, and their failures don't stop Kayak's run. They use
-the ramp's `full` level (`-ApiLevel`): the ramp exists for Kayak. Then Kayak's run
-(`--sites kayak`) goes as before, ramp and all, on the routes left. To move a route to
+**Two runs a day, one per kind of source, side by side.** Routes on an API source --
+`apify_google` (`-ApiSites`) -- run in a run of their own (`track --sites apify_google
+--level full`), started in the background as Kayak's begins. Nothing in it touches this
+connection, so Kayak's cooldown, ramp and CAPTCHA stop don't hold it up, and its failures
+don't stop Kayak's run. It records into `home-runs/home-api.duckdb` and logs to
+`home-runs/home-api.log`, since DuckDB lets only one process open a database file, and the
+script waits for it before ending. It uses the ramp's `full` level (`-ApiLevel`): the ramp
+exists for Kayak. Kayak's run (`--sites kayak`) goes as before, ramp and all, on the
+routes left. To move a route to
 Google Flights, give it `"site": "apify_google"` in the spec, and set `FFS_APIFY_TOKEN`
 as a user environment variable (`setx FFS_APIFY_TOKEN <token>`, then log off and on) so
 the scheduled task sees it. `plan --sites apify_google --level full` and
@@ -382,7 +385,7 @@ Register-ScheduledTask -TaskName "Flight fare tracking (home)" -Action $action `
     -Trigger @((New-ScheduledTaskTrigger -Daily -At 9:00AM), $logon) -Settings $settings
 ```
 
-`publish-hf --db home-runs/home.duckdb` uploads whatever earlier runs left queued. With
+`publish-hf --db home-runs/home.duckdb` (or `home-api.duckdb`) uploads whatever earlier runs left queued. With
 `--snapshot-date YYYY-MM-DD --run-id <id> [--diagnostics FILE]` it also uploads that
 whole day, for a database recorded before the queue existed.
 
