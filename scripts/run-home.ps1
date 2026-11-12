@@ -45,6 +45,15 @@ New-Item -ItemType Directory -Force "home-runs" | Out-Null
 if (-not $Bucket) { throw "No bucket: pass -Bucket namespace/name or set FFS_HF_BUCKET" }
 if (-not (Test-Path $Spec)) { throw "Route spec not found: $Spec" }
 $env:FFS_HF_BUCKET = $Bucket
+# Settings saved for the user (setx) reach every process started after they were saved,
+# but not one started before -- read them from there if this one is missing them.
+foreach ($name in "FFS_APIFY_TOKEN", "FFS_APIFY_OUTBOUNDS", "FFS_APIFY_COST_PER_SEARCH",
+                  "FFS_APIFY_RESERVE_USD", "FFS_APIFY_DAILY_SEARCHES") {
+    if (-not [Environment]::GetEnvironmentVariable($name)) {
+        $value = [Environment]::GetEnvironmentVariable($name, "User")
+        if ($value) { Set-Item "env:$name" $value }
+    }
+}
 
 $started = Get-Date
 if ($started.TimeOfDay -lt [timespan]::Parse($NotBefore)) { exit 0 }
