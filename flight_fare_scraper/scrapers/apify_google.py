@@ -7,26 +7,30 @@ directly; this actor fetches through its own proxies, so being refused is its pr
 and it bills per itinerary row: $0.20 per 1,000, with Apify's free plan including $5 of
 usage a month.
 
-One search is one synchronous actor run. It asks for the FFS_APIFY_OUTBOUNDS cheapest
-outbound flights (default 5), each with up to 20 of its returns priced as the round
-trip's total; every such pairing is stored. A route that allows stops but whose cheapest
-outbounds are all connections gets a second, nonstop-only run, as Kayak gets a nonstop
-pass. Its fallback to Kayak is turned off, so every row is Google's.
+One search is one actor run, started and then checked on, so a dropped connection costs
+a check, not a second billed run. It asks for the FFS_APIFY_OUTBOUNDS cheapest outbound
+flights (default 5), each with up to 20 of its returns priced as the round trip's total;
+every such pairing is stored. A route that allows stops but whose cheapest outbounds are
+all connections gets a second, nonstop-only run, as Kayak gets a nonstop pass. Its
+fallback to Kayak is turned off, so every row is Google's. A run costs $0.0002 a row --
+$0.001 at 5 -- and the returns inside a row aren't billed (measured 2026-11-12).
 
-The actor documents its row fields but not the keys inside `legs`, `layovers` and
-`returnOptions`, so those are read from several likely spellings and the summary fields
-fill any gap. Check the first live run's rows before relying on the details.
+A city code (NYC, LON) works, but Google answers it from its results page, which gives
+each outbound's round-trip price and no returns: those rows are stored with the return
+fields empty. Listing the airports instead isn't accepted, and a search per airport pair
+would cost several times as much.
 """
 
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from .. import redact
 from ..models import SearchQuery
 from .api import ApiScraper
-from .base import ScraperError, SourceUnavailableError
+from .base import ScraperError, SearchTimeoutError, SourceUnavailableError
 from .google_flights import Itinerary, Leg, Segment, airports_for, env_count
 
 
@@ -40,7 +44,11 @@ def env_float(name: str, default: float) -> float:
 logger = logging.getLogger(__name__)
 
 ACTOR = "lergassy~google-flights-api"
-ENDPOINT = f"https://api.apify.com/v2/acts/{ACTOR}/run-sync-get-dataset-items"
+RUNS_URL = f"https://api.apify.com/v2/acts/{ACTOR}/runs"
+RUN_URL = "https://api.apify.com/v2/actor-runs/{}"
+ITEMS_URL = "https://api.apify.com/v2/datasets/{}/items"
+RUN_SECONDS = 300  # give up on a run that hasn't finished in this long
+CHECK_RETRIES = 3  # a dropped status check or results fetch is retried; it costs nothing
 LIMITS_URL = "https://api.apify.com/v2/users/me/limits"  # this cycle's usage and cap, and when it resets
 OUTBOUNDS_ENV = "FFS_APIFY_OUTBOUNDS"
 # The free plan stops at its monthly credit rather than charging, so the budget only
@@ -140,9 +148,16 @@ def parse_rows(query: SearchQuery, rows: Iterable[dict]) -> List[Itinerary]:
         out_from, out_to = _ends(outbound)
         if (out_from and out_from not in origins) or (out_to and out_to not in destinations):
             continue
-        for option in row.get("returnOptions") or []:
-            if not isinstance(option, dict):
-                continue
+        options = [option for option in row.get("returnOptions") or [] if isinstance(option, dict)]
+        if not options:
+            # Google gave no returns (a city code's results page does this): the row's own
+            # price is still the round trip's, with its cheapest return.
+            price = row.get("price")
+            if isinstance(price, (int, float)) and not isinstance(price, bool):
+                found.append(Itinerary(outbound, Leg(), float(price), currency=row.get("currency") or "USD",
+                                       price_level=row.get("priceLevel")))
+            continue
+        for option in options:
             total = _first(option, "totalPrice", "price", "roundTripPrice")
             if not isinstance(total, (int, float)):
                 continue
@@ -172,7 +187,7 @@ def daily_allowance(limits: dict, now: datetime, cost_per_search: float, reserve
 class ApifyGoogleScraper(ApiScraper):
     name = "apify_google"
     key_env = "FFS_APIFY_TOKEN"
-    timeout_s = 300.0  # a synchronous run answers within Apify's 5-minute limit or not at all
+    timeout_s = 90.0  # each call waits at most a minute on Apify's side
 
     def __enter__(self) -> "ApifyGoogleScraper":
         super().__enter__()
@@ -239,7 +254,27 @@ class ApifyGoogleScraper(ApiScraper):
         }
 
     def _run(self, query: SearchQuery, nonstop: bool) -> List[dict]:
-        return _flight_rows(self.request("POST", ENDPOINT, body=self.run_input(query, nonstop), headers=self._auth()))
+        """Start an actor run, wait for it, and fetch its rows."""
+        run = self.request("POST", RUNS_URL, params={"waitForFinish": 0}, body=self.run_input(query, nonstop),
+                           headers=self._auth())["data"]
+        started = time.monotonic()
+        while run.get("status") in ("READY", "RUNNING"):
+            if time.monotonic() - started > RUN_SECONDS:
+                raise SearchTimeoutError(f"apify: run unfinished after {RUN_SECONDS}s")
+            run = self._checked(RUN_URL.format(run["id"]), {"waitForFinish": 60})["data"]
+        if run.get("status") != "SUCCEEDED":
+            raise ScraperError(f"apify: run {str(run.get('status')).lower()}")
+        return _flight_rows(self._checked(ITEMS_URL.format(run["defaultDatasetId"]), {"clean": "true", "format": "json"}))
+
+    def _checked(self, url: str, params: Dict[str, Any]) -> Any:
+        """A GET that is retried when the connection drops: reading a run is free."""
+        for attempt in range(CHECK_RETRIES):
+            try:
+                return self.request("GET", url, params=params, headers=self._auth())
+            except SearchTimeoutError:
+                if attempt == CHECK_RETRIES - 1:
+                    raise
+                logger.warning("apify: reading the run failed (attempt %d); trying again", attempt + 1)
 
     def itineraries(self, query: SearchQuery) -> List[Itinerary]:
         rows = self._run(query, nonstop=query.nonstop_only)

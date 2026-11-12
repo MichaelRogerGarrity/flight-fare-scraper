@@ -678,8 +678,13 @@ def _apify(monkeypatch, *answers, token="tok", limits=None):
         if url.endswith("/users/me/limits"):
             scraper.usage_checks += 1
             return limits if limits is not None else _limits()
-        scraper.sent.append({"method": method, "url": url, "params": params, "body": body, "headers": headers})
-        return replies.pop(0)
+        if method == "POST":  # starting a run
+            scraper.sent.append({"method": method, "url": url, "params": params, "body": body, "headers": headers})
+            return {"data": {"id": f"run{len(scraper.sent)}", "status": "SUCCEEDED", "defaultDatasetId": "ds"}}
+        reply = replies.pop(0)  # the run's rows
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
     monkeypatch.setattr(scraper, "request", respond)
     return scraper
 
@@ -697,7 +702,7 @@ def test_apify_stores_each_outbound_with_its_returns_at_the_round_trip_total(mon
     assert row.outbound_airline == "Delta" and row.outbound_from == "MIA" and row.return_to == "MIA"
     assert row.outbound_depart == "2026-11-27T08:00:00" and row.outbound_equipment == "A321"
     sent = scraper.sent[0]
-    assert sent["method"] == "POST" and "lergassy~google-flights-api" in sent["url"] and sent["params"] is None
+    assert sent["method"] == "POST" and "lergassy~google-flights-api" in sent["url"] and "token" not in str(sent["params"])
     assert sent["headers"] == {"Authorization": "Bearer tok"}  # never in the URL
     body = sent["body"]
     assert (body["origin"], body["destination"], body["departureDate"], body["returnDate"]) == (
@@ -766,6 +771,45 @@ def test_apify_unreadable_usage_falls_back_to_a_fixed_cap(monkeypatch):
     scraper = _apify(monkeypatch, answer, answer, limits={"unexpected": True})
     scraper.search(NONSTOP)
     with pytest.raises(SourceUnavailableError):
+        scraper.search(NONSTOP)
+
+
+def test_apify_keeps_a_city_codes_outbounds_without_returns(monkeypatch):
+    # A city code comes back from Google's results page: round-trip prices, no returns.
+    row = _ap_row("08:00", "09:00", 352, frm="LGA", to="LAX")
+    query = build_query("NYC", "LAX", "2026-11-27", "2026-11-29", nonstop="false")
+    rows = _apify(monkeypatch, [row]).search(query)
+    assert [(r.price, r.outbound_from, r.return_depart, r.return_from) for r in rows] == [(352.0, "LGA", None, None)]
+
+
+def test_apify_waits_for_its_run_and_retries_a_dropped_check_for_free(monkeypatch):
+    answer = [_ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150)])]
+    scraper = _apify(monkeypatch)
+    checks = iter([{"data": {"id": "r", "status": "RUNNING", "defaultDatasetId": "ds"}},
+                   SearchTimeoutError("apify_google: request failed (RemoteDisconnected)"),
+                   {"data": {"id": "r", "status": "SUCCEEDED", "defaultDatasetId": "ds"}}, answer])
+    started = []
+
+    def respond(method, url, params=None, body=None, headers=None):
+        if url.endswith("/users/me/limits"):
+            return _limits()
+        if method == "POST":
+            started.append(url)
+            return {"data": {"id": "r", "status": "READY", "defaultDatasetId": "ds"}}
+        reply = next(checks)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(scraper, "request", respond)
+    assert [r.price for r in scraper.search(NONSTOP)] == [150.0]
+    assert len(started) == 1  # one billed run, though a check dropped
+
+    def failed(method, url, params=None, body=None, headers=None):
+        if url.endswith("/users/me/limits"):
+            return _limits()
+        return {"data": {"id": "r", "status": "FAILED", "defaultDatasetId": "ds"}}
+    monkeypatch.setattr(scraper, "request", failed)
+    with pytest.raises(ScraperError, match="run failed"):
         scraper.search(NONSTOP)
 
 
