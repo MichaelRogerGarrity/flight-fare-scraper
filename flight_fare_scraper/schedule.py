@@ -10,7 +10,7 @@ run time from the FFS_ROUTES secret. See examples/routes.spec.example.json.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -114,6 +114,20 @@ def parse_spec(text: str) -> Spec:
         min_days_out=int(raw.get("min_days_out", 1)),
         min_nights=int(raw.get("min_nights", 1)),
     )
+
+
+DEFAULT_SITE = "kayak"
+
+
+def route_site(route: Route) -> str:
+    return route.options.get("site") or DEFAULT_SITE
+
+
+def only_sites(spec: Spec, sites: Sequence[str]) -> Spec:
+    """The spec with only the routes searched on these sources (a route without a
+    `site` is Kayak's), so each source can run on its own with its own limits."""
+    wanted = {site.strip() for site in sites if site.strip()}
+    return replace(spec, routes=tuple(route for route in spec.routes if route_site(route) in wanted))
 
 
 def parse_tiers(entries: Sequence[Any], where_list: str) -> Tuple[Tier, ...]:

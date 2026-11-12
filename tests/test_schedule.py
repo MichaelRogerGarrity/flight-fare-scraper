@@ -330,3 +330,13 @@ def test_combos_per_visit_must_be_a_positive_integer(bad):
     tiers = [{"max_days_out": 30, "every_days": 1, "day_offsets": [-1, 0, 1], "combos_per_visit": bad}]
     with pytest.raises(ValueError, match="combos_per_visit"):
         schedule.parse_spec(json.dumps({**SPEC, "tiers": tiers}))
+
+
+def test_only_sites_keeps_each_sources_own_routes():
+    mixed = spec(routes=[{"origin": "aaa", "destination": "bbb", "nights": 2},
+                         {"origin": "ccc", "destination": "ddd", "nights": 2, "site": "apify_google"}])
+    kayak = schedule.only_sites(mixed, ["kayak"])  # a route without a site is Kayak's
+    google = schedule.only_sites(mixed, [" apify_google "])
+    assert [r.origin for r in kayak.routes] == ["AAA"] and [r.origin for r in google.routes] == ["CCC"]
+    assert {q.site for q in schedule.due_today(google, date(2026, 9, 30))} == {"apify_google"}
+    assert schedule.only_sites(mixed, ["fli"]).routes == ()

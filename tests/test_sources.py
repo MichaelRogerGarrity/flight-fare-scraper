@@ -659,13 +659,25 @@ def _ap_return(dep, arr, total, frm="MCO", to="MIA"):
     return dict(row, totalPrice=total)
 
 
-def _apify(monkeypatch, *answers, token="tok"):
+def _limits(used=1.0, cap=5.0, ends="2026-11-30T00:00:00.000Z"):
+    """Apify's /users/me/limits answer."""
+    return {"data": {"monthlyUsageCycle": {"startAt": "2026-11-01T00:00:00.000Z", "endAt": ends},
+                     "limits": {"maxMonthlyUsageUsd": cap}, "current": {"monthlyUsageUsd": used}}}
+
+
+def _apify(monkeypatch, *answers, token="tok", limits=None):
+    """A scraper whose actor runs answer `answers` in turn; its usage checks get `limits`.
+    Keeps each actor run's request in `scraper.sent`."""
     from flight_fare_scraper.scrapers.apify_google import ApifyGoogleScraper
     monkeypatch.setenv("FFS_APIFY_TOKEN", token)
     scraper = ApifyGoogleScraper().__enter__()
     scraper.sent, replies = [], list(answers)
+    scraper.usage_checks = 0
 
     def respond(method, url, params=None, body=None, headers=None):
+        if url.endswith("/users/me/limits"):
+            scraper.usage_checks += 1
+            return limits if limits is not None else _limits()
         scraper.sent.append({"method": method, "url": url, "params": params, "body": body, "headers": headers})
         return replies.pop(0)
     monkeypatch.setattr(scraper, "request", respond)
@@ -722,6 +734,39 @@ def test_apify_summary_fields_fill_in_when_a_row_has_no_legs(monkeypatch):
     rows = _apify(monkeypatch, [row]).search(NONSTOP)
     assert [(r.outbound_airline, r.outbound_depart, r.outbound_stops, r.return_arrive) for r in rows] == [
         ("Delta", "2026-11-27T08:00:00", 0, "2026-11-29T19:00:00")]
+
+
+def test_apify_spreads_the_months_credit_over_the_days_left():
+    from flight_fare_scraper.scrapers.apify_google import daily_allowance
+    now = datetime(2026, 11, 20, 12, 0)
+    # $5 cap, $1 used, $0.25 reserve: $3.75 over 10 days left at $0.002 a search.
+    assert daily_allowance(_limits(), now, 0.002, 0.25) == 187
+    assert daily_allowance(_limits(used=4.9), now, 0.002, 0.25) == 0
+    assert daily_allowance(_limits(ends="2026-11-20T18:00:00Z"), now, 0.002, 0.25) == 1875  # last day: all of it
+    assert daily_allowance({"data": {}}, now, 0.002, 0.25) is None
+
+
+def test_apify_stops_at_todays_share_and_reads_usage_once(monkeypatch):
+    monkeypatch.setenv("FFS_APIFY_COST_PER_SEARCH", "1.0")  # so $5 - $1 - $0.25 over the days left is 0 or 1
+    answer = [_ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150)])]
+    scraper = _apify(monkeypatch, answer, answer, limits=_limits(ends="2099-01-01T00:00:00Z"))
+    with pytest.raises(SourceUnavailableError, match="today's share"):
+        scraper.search(NONSTOP)
+    assert scraper.sent == [] and scraper.usage_checks == 1
+    monkeypatch.setenv("FFS_APIFY_COST_PER_SEARCH", "0.002")
+    scraper = _apify(monkeypatch, answer, answer)
+    scraper.search(NONSTOP)
+    scraper.search(NONSTOP)
+    assert len(scraper.sent) == 2 and scraper.usage_checks == 1
+
+
+def test_apify_unreadable_usage_falls_back_to_a_fixed_cap(monkeypatch):
+    monkeypatch.setenv("FFS_APIFY_DAILY_SEARCHES", "1")
+    answer = [_ap_row("08:00", "09:00", 150, returns=[_ap_return("18:00", "19:00", 150)])]
+    scraper = _apify(monkeypatch, answer, answer, limits={"unexpected": True})
+    scraper.search(NONSTOP)
+    with pytest.raises(SourceUnavailableError):
+        scraper.search(NONSTOP)
 
 
 # --- in the runner --------------------------------------------------------------------------

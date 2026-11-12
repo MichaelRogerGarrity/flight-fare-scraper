@@ -57,6 +57,21 @@ def configure_logging(verbose: bool, log_file: Optional[str]) -> None:
     logger.propagate = False
 
 
+SITES_HELP = ("Only the routes searched on these sources, comma-separated (a route without a 'site' is "
+              "kayak's), so each source can run on its own with its own limits: --sites kayak")
+
+
+def ramp_level_named(settings: load.Settings, name: str) -> load.Level:
+    matches = [lv for i, lv in enumerate(settings.levels) if name in (lv.name, str(i))]
+    if not matches:
+        raise ValueError(f"no ramp level named {name!r}; the spec has {[lv.name for lv in settings.levels] or 'none'}")
+    return matches[0]
+
+
+def site_list(text: str) -> List[str]:
+    return [site.strip() for site in (text or "").split(",") if site.strip()]
+
+
 def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--config", help=CONFIG_HELP)
@@ -67,6 +82,10 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--limit", type=int, default=0,
                         help="Run at most this many searches (after sharding). For smoke-testing "
                              "the pipeline end to end without waiting out a full day's schedule.")
+    parser.add_argument("--sites", default="", help=SITES_HELP)
+    parser.add_argument("--level", default="",
+                        help="Use this load ramp level's schedule (name or index) whatever the ramp says, "
+                             "for routes the ramp doesn't govern: --sites apify_google --level full")
 
 
 def parse_shard(text: Optional[str]) -> Optional[Tuple[int, int]]:
@@ -122,11 +141,15 @@ def prepare_load(args: argparse.Namespace) -> bool:
 def queries_from(args: argparse.Namespace) -> List[SearchQuery]:
     """Build the search list from a CSV config, a route spec file, or a spec in the environment."""
     if args.config:
-        return load_queries(args.config)
+        queries = load_queries(args.config)
+        sites = site_list(args.sites)
+        return [query for query in queries if query.site in sites] if sites else queries
 
     today = datetime.strptime(args.today, "%Y-%m-%d").date() if args.today else date.today()
     spec = schedule.parse_spec(spec_text(args))
-    level = getattr(args, "ramp_level", None)
+    if site_list(args.sites):
+        spec = schedule.only_sites(spec, site_list(args.sites))
+    level = ramp_level_named(load.parse(spec_text(args)), args.level) if args.level else getattr(args, "ramp_level", None)
     if level is not None:  # the load ramp's current level stands in for the spec's own tiers
         spec = replace(spec, tiers=level.tiers)
     queries = schedule.due_today(spec, today)
@@ -275,6 +298,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
                                help="Searches per day not to exceed (default 400). Exits 1 if any day does.")
     budget_parser.add_argument("--target-hours", dest="target_hours", type=float, default=14.0,
                                help="Pacing target to report spacing for (default 14, as the workflow uses)")
+    budget_parser.add_argument("--sites", default="", help=SITES_HELP)
     budget_parser.add_argument("--level", default="",
                                help="Simulate this load ramp level (name or index) instead of the spec's own tiers")
     budget_parser.add_argument("--costs", default="",
@@ -793,15 +817,13 @@ def run_budget(args: argparse.Namespace) -> int:
     if not text.strip():
         raise ValueError(f"environment variable {args.spec_env} is empty or unset")
     spec = schedule.parse_spec(text)
+    if site_list(args.sites):
+        spec = schedule.only_sites(spec, site_list(args.sites))
     settings = load.parse(text)
     start = datetime.strptime(args.start, "%Y-%m-%d").date() if args.start else date.today()
     costs = budget.load_costs(args.costs) if args.costs else None
     if args.level:
-        matches = [lv for i, lv in enumerate(settings.levels) if args.level in (lv.name, str(i))]
-        if not matches:
-            raise ValueError(f"no ramp level named {args.level!r}; the spec has "
-                             f"{[lv.name for lv in settings.levels] or 'none'}")
-        spec = replace(spec, tiers=matches[0].tiers)
+        spec = replace(spec, tiers=ramp_level_named(settings, args.level).tiers)
     report = budget.simulate(spec, start, args.days, costs)
     print(budget.render(report, args.limit, args.target_hours))
     if settings.max_searches_per_hour:

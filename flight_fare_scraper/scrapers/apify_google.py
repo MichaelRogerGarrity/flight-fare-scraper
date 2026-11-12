@@ -19,20 +19,36 @@ fill any gap. Check the first live run's rows before relying on the details.
 """
 
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 from .. import redact
 from ..models import SearchQuery
 from .api import ApiScraper
-from .base import ScraperError
+from .base import ScraperError, SourceUnavailableError
 from .google_flights import Itinerary, Leg, Segment, airports_for, env_count
+
+
+def env_float(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+        return value if value > 0 else default
+    except ValueError:
+        return default
 
 logger = logging.getLogger(__name__)
 
 ACTOR = "lergassy~google-flights-api"
 ENDPOINT = f"https://api.apify.com/v2/acts/{ACTOR}/run-sync-get-dataset-items"
+LIMITS_URL = "https://api.apify.com/v2/users/me/limits"  # this cycle's usage and cap, and when it resets
 OUTBOUNDS_ENV = "FFS_APIFY_OUTBOUNDS"
+# The free plan stops at its monthly credit rather than charging, so the budget only
+# spreads the credit over the month. Cost per search is a guess until the first runs
+# measure it: 5 rows at $0.0002, with room for a nonstop rerun and billed returns.
+COST_ENV, DEFAULT_COST_PER_SEARCH = "FFS_APIFY_COST_PER_SEARCH", 0.002
+RESERVE_ENV, DEFAULT_RESERVE_USD = "FFS_APIFY_RESERVE_USD", 0.25
+DAILY_SEARCHES_ENV, DEFAULT_DAILY_SEARCHES = "FFS_APIFY_DAILY_SEARCHES", 150  # also the cap if usage can't be read
 RETURNS_PER_OUTBOUND = 20
 NOT_FLIGHTS = {"search", "notice", "calendar_day", "error"}  # other kinds of row the actor can add
 
@@ -139,10 +155,75 @@ def parse_rows(query: SearchQuery, rows: Iterable[dict]) -> List[Itinerary]:
     return found
 
 
+def daily_allowance(limits: dict, now: datetime, cost_per_search: float, reserve_usd: float) -> Optional[int]:
+    """Searches today can afford: the month's credit left, less a reserve, spread evenly
+    over the days left in the usage cycle. None if Apify's answer can't be read."""
+    data = limits.get("data") if isinstance(limits, dict) else None
+    try:
+        cap = float(data["limits"]["maxMonthlyUsageUsd"])
+        used = float(data["current"]["monthlyUsageUsd"])
+        ends = datetime.fromisoformat(str(data["monthlyUsageCycle"]["endAt"]).replace("Z", "+00:00"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    days_left = max(1, -(-(ends.replace(tzinfo=None) - now).total_seconds() // 86400))
+    return max(0, int((cap - used - reserve_usd) / days_left / cost_per_search))
+
+
 class ApifyGoogleScraper(ApiScraper):
     name = "apify_google"
     key_env = "FFS_APIFY_TOKEN"
     timeout_s = 300.0  # a synchronous run answers within Apify's 5-minute limit or not at all
+
+    def __enter__(self) -> "ApifyGoogleScraper":
+        super().__enter__()
+        self.allowance: Optional[int] = None  # searches left today; worked out at the first search
+        self.used_at_start: Optional[float] = None
+        self.searched = 0
+        return self
+
+    def _auth(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}"}  # keeps the token out of the URL
+
+    def _budget(self) -> int:
+        """Today's share of the month's credit, in searches, read from Apify once a run."""
+        fallback = env_count(DAILY_SEARCHES_ENV, DEFAULT_DAILY_SEARCHES)
+        try:
+            limits = self.request("GET", LIMITS_URL, headers=self._auth())
+        except SourceUnavailableError:
+            raise
+        except ScraperError as error:
+            logger.warning("apify: couldn't read the account's usage (%s); allowing %d searches", error, fallback)
+            return fallback
+        cost = env_float(COST_ENV, DEFAULT_COST_PER_SEARCH)
+        allowance = daily_allowance(limits, datetime.now(timezone.utc).replace(tzinfo=None), cost, env_float(RESERVE_ENV, DEFAULT_RESERVE_USD))
+        if allowance is None:
+            logger.warning("apify: the account's usage was unreadable; allowing %d searches", fallback)
+            return fallback
+        data = limits["data"]
+        self.used_at_start = float(data["current"]["monthlyUsageUsd"])
+        logger.info("apify: $%.2f of $%.2f used this cycle; today's share is %d searches at ~$%.4f each",
+                    self.used_at_start, float(data["limits"]["maxMonthlyUsageUsd"]), allowance, cost)
+        return min(allowance, fallback) if os.environ.get(DAILY_SEARCHES_ENV) else allowance
+
+    def search(self, query: SearchQuery):
+        if not getattr(self, "api_key", ""):
+            return super().search(query)  # raises: no key
+        if self.allowance is None:
+            self.allowance = self._budget()
+        if self.searched >= self.allowance:
+            raise SourceUnavailableError(f"apify: today's share of the free credit is used ({self.searched} searches)")
+        self.searched += 1
+        return super().search(query)
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.searched and self.used_at_start is not None:
+            try:
+                used = float(self.request("GET", LIMITS_URL, headers=self._auth())["data"]["current"]["monthlyUsageUsd"])
+                logger.info("apify: this run used ~$%.4f for %d searches (~$%.5f each; Apify's figure can lag)",
+                            used - self.used_at_start, self.searched, (used - self.used_at_start) / self.searched)
+            except (ScraperError, KeyError, TypeError, ValueError):
+                pass
+        super().__exit__(exc_type, exc, tb)
 
     def run_input(self, query: SearchQuery, nonstop: bool) -> Dict[str, Any]:
         outbounds = env_count(OUTBOUNDS_ENV, 5, minimum=1)
@@ -158,9 +239,7 @@ class ApifyGoogleScraper(ApiScraper):
         }
 
     def _run(self, query: SearchQuery, nonstop: bool) -> List[dict]:
-        rows = self.request("POST", ENDPOINT, body=self.run_input(query, nonstop),
-                            headers={"Authorization": f"Bearer {self.api_key}"})  # keeps the token out of the URL
-        return _flight_rows(rows)
+        return _flight_rows(self.request("POST", ENDPOINT, body=self.run_input(query, nonstop), headers=self._auth()))
 
     def itineraries(self, query: SearchQuery) -> List[Itinerary]:
         rows = self._run(query, nonstop=query.nonstop_only)

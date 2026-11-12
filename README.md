@@ -351,6 +351,17 @@ start is missed" so it still runs on days the machine is off at the scheduled ti
 late start just shifts the day's run: the snapshot date is pinned to the day the run
 started, and no search starts more than 20 hours in (`-DeadlineHours`).
 
+**Two runs a day, one per kind of source.** Routes on an API source -- `apify_google`
+(`-ApiSites`) -- run first, in a run of their own (`track --sites apify_google --level full`):
+minutes, not hours, and nothing that touches this connection, so Kayak's cooldown, ramp
+and CAPTCHA stop don't hold them up, and their failures don't stop Kayak's run. They use
+the ramp's `full` level (`-ApiLevel`): the ramp exists for Kayak. Then Kayak's run
+(`--sites kayak`) goes as before, ramp and all, on the routes left. To move a route to
+Google Flights, give it `"site": "apify_google"` in the spec, and set `FFS_APIFY_TOKEN`
+as a user environment variable (`setx FFS_APIFY_TOKEN <token>`, then log off and on) so
+the scheduled task sees it. `plan --sites apify_google --level full` and
+`budget --sites apify_google --level full` show what that run will do.
+
 While a cooldown is on, the script checks again every 30 minutes (`-CooldownCheckMinutes`)
 until 22:00 (`-GiveUpAt`), so a cooldown ending mid-morning still gets that day's run.
 
@@ -500,6 +511,15 @@ Kayak is off. Its documentation doesn't spell out the keys inside each row's leg
 returns, so check the first live run before relying on flight-level detail. Setup: an
 Apify account (the free plan is enough to start), and its API token from Settings ->
 API & Integrations in `FFS_APIFY_TOKEN`.
+
+The free plan stops at its monthly credit instead of charging, so the source spreads the
+credit over the month: before its first search each run it reads the account's usage
+(`/v2/users/me/limits`) and allows today's share -- the credit left, less
+`FFS_APIFY_RESERVE_USD` ($0.25), over the days left in the cycle -- at
+`FFS_APIFY_COST_PER_SEARCH` ($0.002, a cautious guess until measured; each run logs what
+it actually used). Past that share the rest of the day's searches on it are skipped,
+nearest dates having gone first. If the usage can't be read it allows
+`FFS_APIFY_DAILY_SEARCHES` (150), which, when set, also caps the share.
 
 None of the API sources has been run against the live service yet; their parsers follow
 each provider's documented response, in `tests/test_sources.py`.

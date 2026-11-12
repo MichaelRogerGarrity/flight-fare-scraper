@@ -29,6 +29,12 @@ param(
     # cooldown, ramp -- are in the spec's "load" section, not here.
     [int]$CooldownCheckMinutes = 30,
     [string]$GiveUpAt = "22:00",
+    # Routes on these sources run first, each day, in a run of their own: they don't touch
+    # this connection, so Kayak's cooldown, ramp and CAPTCHA stop don't apply to them.
+    # They need their key in the environment (for apify_google, FFS_APIFY_TOKEN).
+    [string]$ApiSites = "apify_google",
+    # The ramp level whose schedule they use: the ramp itself is for Kayak.
+    [string]$ApiLevel = "full",
     [string]$Python = "python"
 )
 
@@ -45,43 +51,59 @@ if ($started.TimeOfDay -lt [timespan]::Parse($NotBefore)) { exit 0 }
 $giveUp = $started.Date + [timespan]::Parse($GiveUpAt)
 $utc = { param($t) $t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") + "+00:00" }
 
+# One `track` run. The snapshot date is pinned to the day the script started, even if a
+# run finishes after midnight; --resume skips what today already recorded.
+function Invoke-Track([string]$RunId, [string[]]$Extra) {
+    $arguments = @(
+        "-m", "flight_fare_scraper.cli", "track",
+        "--spec", $Spec,
+        "--db", "home-runs/home.duckdb",
+        "--run-id", $RunId,
+        "--snapshot-date", $started.ToString("yyyy-MM-dd"),
+        "--resume",
+        "--publish-hf",
+        "--deadline", (& $utc $started.AddHours($DeadlineHours)),
+        "--summary", "home-runs/summary-$RunId.json",
+        # A CAPTCHA, bot pages or the breaker leave a one-line alert here (see the README).
+        "--alert-dir", "home-runs/alerts",
+        "--log-file", "home-runs/home.log"
+    ) + $Extra | ForEach-Object { "`"$_`"" }
+
+    # Through cmd.exe, which does the redirecting: Windows PowerShell turns a native
+    # program's first line on stderr -- where Python logs -- into a terminating error under
+    # "Stop", which ended the first scheduled run at its first log line.
+    #
+    # Ending the task in Task Scheduler stops only this script, not the run. To stop a run:
+    #   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'flight_fare_scraper' |
+    #       % { taskkill /PID $_.ProcessId /T /F }
+    # --resume picks up where it stopped next time.
+    & cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$RunId.txt`" 2>&1`""
+    return $LASTEXITCODE
+}
+
+# The API sources first: minutes, not hours, and nothing Kayak's state can hold up. Their
+# own limits (for Apify, today's share of the month's free credit) live in the source.
+# A failure here is logged in its own run file and doesn't stop the Kayak run.
+if ($ApiSites) {
+    $apiId = "home-api-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmss")
+    $apiCode = Invoke-Track $apiId @("--sites", $ApiSites, "--level", $ApiLevel)
+    if ($apiCode -ne 0) { Write-Warning "API sources run exited $apiCode; see home-runs/run-$apiId.txt" }
+}
+
 while ($true) {
 $now = Get-Date
 $runId = "home-" + $now.ToUniversalTime().ToString("yyyyMMddTHHmmss")
 
-# One process does the whole day here, so pacing has no later shards to leave room for.
-# The snapshot date is pinned to the day the run started, even if it finishes after midnight.
-$arguments = @(
-    "-m", "flight_fare_scraper.cli", "track",
-    "--spec", $Spec,
-    "--db", "home-runs/home.duckdb",
-    "--run-id", $runId,
-    "--snapshot-date", $now.ToString("yyyy-MM-dd"),
-    "--resume",
+# One process does Kayak's whole day here, so pacing has no later shards to leave room for.
+$code = Invoke-Track $runId @(
+    "--sites", "kayak",
     "--max-pages", "$MaxPages",
-    "--publish-hf",
     "--pace-until", (& $utc $now.AddHours($TargetHours)),
     "--searches-after", "0",
     "--job-hours", "$TargetHours",
-    "--deadline", (& $utc $now.AddHours($DeadlineHours)),
-    "--summary", "home-runs/summary-$runId.json",
-    # A CAPTCHA, bot pages or the breaker leave a one-line alert here (see the README).
-    "--alert-dir", "home-runs/alerts",
     # The load ramp's level and the last refusal, kept between runs.
-    "--load-state", "home-runs/load-state.json",
-    "--log-file", "home-runs/home.log"
-) | ForEach-Object { "`"$_`"" }
-
-# Through cmd.exe, which does the redirecting: Windows PowerShell turns a native
-# program's first line on stderr -- where Python logs -- into a terminating error under
-# "Stop", which ended the first scheduled run at its first log line.
-#
-# Ending the task in Task Scheduler stops only this script, not the run. To stop a run:
-#   Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? CommandLine -match 'flight_fare_scraper' |
-#       % { taskkill /PID $_.ProcessId /T /F }
-# --resume picks up where it stopped next time.
-& cmd.exe /c "`"`"$Python`" $($arguments -join ' ') > `"home-runs/run-$runId.txt`" 2>&1`""
-$code = $LASTEXITCODE
+    "--load-state", "home-runs/load-state.json"
+)
 
 # 3: cooling down after a refusal, nothing searched. The cooldown may end later today --
 # the 9:00 start already gone -- so wait and ask again rather than lose the day.

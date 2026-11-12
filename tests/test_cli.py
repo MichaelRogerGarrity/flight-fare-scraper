@@ -64,3 +64,24 @@ def test_plan_writes_a_shard_matrix_for_github_actions(tmp_path):
     assert values["today"] == "2026-09-30"
     assert len(values["snapshot_date"]) == 10  # the Eastern date, fixed once for every shard
     assert count >= 2  # a year of weekends is far more than five searches
+
+
+def test_track_can_take_one_sources_routes_on_a_ramp_level_of_its_own(tmp_path):
+    import json
+    spec = tmp_path / "routes.json"
+    spec.write_text(json.dumps({
+        "tiers": [{"max_days_out": 365, "every_days": 9, "day_offsets": [0]}],
+        "load": {"ramp": {"levels": [{"name": "full", "tiers": [{"max_days_out": 365, "every_days": 1, "day_offsets": [0]}]}]}},
+        "routes": [{"origin": "MIA", "destination": "MCO", "nights": 2},
+                   {"origin": "BOS", "destination": "DEN", "nights": 2, "site": "apify_google"}],
+    }))
+
+    def queries(*extra):
+        args = cli.build_arg_parser().parse_args(["plan", "--spec", str(spec), "--today", "2026-11-11", *extra])
+        return cli.queries_from(args)
+    everything = queries()
+    google = queries("--sites", "apify_google", "--level", "full")
+    assert {q.site for q in queries("--sites", "kayak")} == {"kayak"}
+    assert {(q.site, q.origin) for q in google} == {("apify_google", "BOS")}
+    # Every Friday on the full level, against every ninth day's turn on the spec's own tiers.
+    assert len(google) > len([q for q in everything if q.site == "apify_google"])
