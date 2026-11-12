@@ -217,6 +217,16 @@ through a service that fetches it for us: Apify's Google Flights API actor
 not yet run live. SerpApi and SearchApi (`serpapi`, `searchapi`) are the same data at a
 higher price.
 
+## Google Flights from home again (2026-11-11)
+
+From the home connection, about eight requests in ten minutes: four `fli` searches
+(`flights` 0.9.0, the newest release) and one more logged request all got Google's
+`ErrorResponse` (code 13: HTTP 200, a ~100-360 byte answer with no flights); then Google's
+own page, in a plain headless browser, got its fares (65 KB, $277 BOS-DEN, matching
+Google's figure elsewhere that day); then the same page got code 13 too. So Google answers
+this connection only for a handful of requests before refusing it -- `fli` can't carry a
+share of the tracking from home. Testing stopped there.
+
 ## Connectors for AI assistants (MCP servers, 2026-11-11)
 
 Travel sites now publish MCP servers -- their own doors for AI assistants -- which the
